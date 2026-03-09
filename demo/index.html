@@ -1610,6 +1610,21 @@ function renderStreamElement(spec, id) {
   return node;
 }
 
+function applyPatch(spec, patch) {
+  const op = patch.op;
+  const path = patch.path;
+  if ((op === "add" || op === "replace") && path === "/root") {
+    spec.root = patch.value;
+  } else if ((op === "add" || op === "replace") && path.startsWith("/elements/")) {
+    const key = path.replace("/elements/", "");
+    if (key) spec.elements[key] = patch.value;
+  } else if (op === "remove" && path.startsWith("/elements/")) {
+    const key = path.replace("/elements/", "");
+    delete spec.elements[key];
+  }
+  return spec;
+}
+
 async function doStream() {
   const catalog = getCatalog();
   if (!catalog) { toggleDrawer(); return; }
@@ -1621,13 +1636,13 @@ async function doStream() {
 
   const jsonPanel = document.getElementById("jsonPanel");
   const previewPanel = document.getElementById("previewPanel");
-  jsonPanel.innerHTML = '<div class="json-placeholder">Calling Claude via iii engine...</div>';
-  previewPanel.innerHTML = '<div class="preview-empty"><span>Waiting for Claude...</span></div>';
+  jsonPanel.innerHTML = '<div class="json-placeholder">Streaming JSONL patches from Claude via iii...</div>';
+  previewPanel.innerHTML = '<div class="preview-empty"><span>Waiting for patches...</span></div>';
   streamLogEntries = [];
   document.getElementById("streamLog").innerHTML = "";
 
   try {
-    addStreamLog("text", { text: "calling spec-forge/generate via iii..." });
+    addStreamLog("request", { prompt: prompt.substring(0, 80) });
     const res = await fetch(ENGINE + "/spec-forge/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1642,33 +1657,48 @@ async function doStream() {
       return;
     }
 
-    addStreamLog("root", { root: data.spec.root });
-    const ids = Object.keys(data.spec.elements);
-    const partialSpec = { root: data.spec.root, elements: {} };
+    const patches = data.patches || [];
+    const partialSpec = { root: "", elements: {} };
 
-    for (let i = 0; i < ids.length; i++) {
-      const id = ids[i];
-      partialSpec.elements[id] = data.spec.elements[id];
-      addStreamLog("element", { id, element: data.spec.elements[id] });
-
-      const rawJson = JSON.stringify(partialSpec, null, 2);
-      jsonPanel.innerHTML = syntaxHighlight(rawJson) + '<span class="cursor"></span>';
-      jsonPanel.scrollTop = jsonPanel.scrollHeight;
-
-      previewPanel.innerHTML = "";
-      const el = renderStreamElement(partialSpec, partialSpec.root);
-      if (el) previewPanel.appendChild(el);
-
-      if (ids.length > 1) await new Promise(r => setTimeout(r, 80));
+    if (patches.length === 0) {
+      addStreamLog("cached", { cached: true });
+      currentSpec = data.spec;
+      jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(data.spec, null, 2));
+      renderSpec(currentSpec);
+      document.getElementById("refineBtn").disabled = false;
+      const n = Object.keys(data.spec.elements).length;
+      setBadge("cached", "CACHED · " + n + " ELEMENTS · 0MS");
+      setLoading(false);
+      return;
     }
 
-    addStreamLog("done", { done: true, cached: data.cached });
+    for (let i = 0; i < patches.length; i++) {
+      const patch = patches[i];
+      applyPatch(partialSpec, patch);
+
+      const opLabel = patch.op.toUpperCase();
+      const pathLabel = patch.path;
+      addStreamLog(opLabel, { path: pathLabel, op: patch.op });
+
+      if (partialSpec.root && Object.keys(partialSpec.elements).length > 0) {
+        jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(partialSpec, null, 2)) + '<span class="cursor"></span>';
+        jsonPanel.scrollTop = jsonPanel.scrollHeight;
+
+        previewPanel.innerHTML = "";
+        const el = renderStreamElement(partialSpec, partialSpec.root);
+        if (el) previewPanel.appendChild(el);
+      }
+
+      if (patches.length > 1) await new Promise(r => setTimeout(r, 60));
+    }
+
+    addStreamLog("done", { patches: patches.length, ms: data.generation_ms });
     currentSpec = data.spec;
     document.getElementById("refineBtn").disabled = false;
     jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(data.spec, null, 2));
     renderSpec(currentSpec);
-    const n = ids.length;
-    setBadge(data.cached ? "cached" : "done", (data.cached ? "CACHED · " : "") + n + " ELEMENTS · " + data.generation_ms + "MS");
+    const n = Object.keys(data.spec.elements).length;
+    setBadge("done", patches.length + " PATCHES · " + n + " ELEMENTS · " + data.generation_ms + "MS");
   } catch (e) {
     addStreamLog("error", { error: e.message });
     setBadge("done", "ERROR");

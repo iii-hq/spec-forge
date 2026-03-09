@@ -288,6 +288,7 @@ async fn generate_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (
             .ok();
         return Ok(json!({
             "spec": spec,
+            "patches": [],
             "cached": true,
             "generation_ms": 0u64,
             "model": req.model,
@@ -303,6 +304,7 @@ async fn generate_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (
                 .ok();
             return Ok(json!({
                 "spec": spec,
+                "patches": [],
                 "cached": true,
                 "generation_ms": 0u64,
                 "model": req.model,
@@ -328,17 +330,10 @@ async fn generate_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (
         .await
         .map_err(|e| (502, json!({"error": format!("Claude API error: {}", e)})))?;
 
-    let json_str = extract_json_from_response(&raw).ok_or_else(|| {
+    let (patches, spec) = parse_jsonl_patches(&raw).map_err(|e| {
         (
             422,
-            json!({"error": "Could not extract JSON from response", "details": [raw.clone()]}),
-        )
-    })?;
-
-    let spec: UISpec = serde_json::from_str(&json_str).map_err(|e| {
-        (
-            422,
-            json!({"error": format!("Invalid spec JSON: {}", e), "details": [json_str.clone()]}),
+            json!({"error": format!("Failed to parse JSONL patches: {}", e), "raw": raw}),
         )
     })?;
 
@@ -365,18 +360,82 @@ async fn generate_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (
         .increment("spec-forge::metrics::generate", "total_ms", elapsed as i64)
         .await
         .ok();
+    s.streams
+        .increment(
+            "spec-forge::metrics::generate",
+            "total_patches",
+            patches.len() as i64,
+        )
+        .await
+        .ok();
     tracing::info!(
-        "Generated in {}ms, {} elements",
+        "Generated in {}ms, {} patches, {} elements",
         elapsed,
+        patches.len(),
         spec.elements.len()
     );
 
     Ok(json!({
         "spec": spec,
+        "patches": patches,
         "cached": false,
         "generation_ms": elapsed,
         "model": req.model,
     }))
+}
+
+fn parse_jsonl_patches(raw: &str) -> Result<(Vec<Value>, UISpec), String> {
+    let mut patches = Vec::new();
+    let mut spec = UISpec {
+        root: String::new(),
+        elements: HashMap::new(),
+    };
+
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() || !line.starts_with('{') {
+            continue;
+        }
+        let patch: Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        let op = patch["op"].as_str().unwrap_or("");
+        let path = patch["path"].as_str().unwrap_or("");
+
+        match (op, path) {
+            ("add", "/root") | ("replace", "/root") => {
+                if let Some(val) = patch["value"].as_str() {
+                    spec.root = val.to_string();
+                }
+            }
+            ("add", p) | ("replace", p) if p.starts_with("/elements/") => {
+                let key = p.strip_prefix("/elements/").unwrap_or("");
+                if !key.is_empty() {
+                    if let Ok(el) = serde_json::from_value::<UIElement>(patch["value"].clone()) {
+                        spec.elements.insert(key.to_string(), el);
+                    }
+                }
+            }
+            ("remove", p) if p.starts_with("/elements/") => {
+                let key = p.strip_prefix("/elements/").unwrap_or("");
+                spec.elements.remove(key);
+            }
+            _ => {}
+        }
+
+        patches.push(patch);
+    }
+
+    if spec.root.is_empty() {
+        return Err("No /root patch found in JSONL output".to_string());
+    }
+    if spec.elements.is_empty() {
+        return Err("No /elements patches found in JSONL output".to_string());
+    }
+
+    Ok((patches, spec))
 }
 
 async fn refine_core(s: &SharedState, req: RefineInput) -> Result<Value, (u16, Value)> {
@@ -388,36 +447,60 @@ async fn refine_core(s: &SharedState, req: RefineInput) -> Result<Value, (u16, V
         .await
         .map_err(|e| (429, json!({"error": format!("Rate limited: {}", e)})))?;
 
-    let llm_prompt = diff::build_diff_prompt(&req.prompt, &req.current_spec, &req.catalog);
+    let llm_prompt =
+        prompt::build_refine_prompt(&req.prompt, &req.current_spec, &req.catalog);
     tracing::info!("Calling Claude for refine ({})...", req.model);
 
     let raw = call_claude(&s.http, &s.api_key, &req.model, &llm_prompt)
         .await
         .map_err(|e| (502, json!({"error": format!("Claude API error: {}", e)})))?;
 
-    let json_str = if let Some(start) = raw.find('[') {
-        if let Some(end) = raw.rfind(']') {
-            raw[start..=end].to_string()
-        } else {
-            extract_json_from_response(&raw).unwrap_or_default()
+    let mut patches = Vec::new();
+    let mut new_spec = req.current_spec.clone();
+
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() || !line.starts_with('{') {
+            continue;
         }
-    } else if let Some(obj) = extract_json_from_response(&raw) {
-        format!("[{}]", obj)
-    } else {
+        let patch: Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        let op = patch["op"].as_str().unwrap_or("");
+        let path = patch["path"].as_str().unwrap_or("");
+
+        match (op, path) {
+            ("add", "/root") | ("replace", "/root") => {
+                if let Some(val) = patch["value"].as_str() {
+                    new_spec.root = val.to_string();
+                }
+            }
+            ("add", p) | ("replace", p) if p.starts_with("/elements/") => {
+                let key = p.strip_prefix("/elements/").unwrap_or("");
+                if !key.is_empty() {
+                    if let Ok(el) = serde_json::from_value::<UIElement>(patch["value"].clone()) {
+                        new_spec.elements.insert(key.to_string(), el);
+                    }
+                }
+            }
+            ("remove", p) if p.starts_with("/elements/") => {
+                let key = p.strip_prefix("/elements/").unwrap_or("");
+                new_spec.elements.remove(key);
+            }
+            _ => {}
+        }
+
+        patches.push(patch);
+    }
+
+    if patches.is_empty() {
         return Err((
             422,
-            json!({"error": "Could not extract patches from response", "details": [raw]}),
+            json!({"error": "No patches found in refine response", "raw": raw}),
         ));
-    };
-
-    let patches: Vec<diff::SpecPatch> = serde_json::from_str(&json_str).map_err(|e| {
-        (
-            422,
-            json!({"error": format!("Invalid patches JSON: {}", e), "details": [json_str]}),
-        )
-    })?;
-
-    let new_spec = diff::apply_patches(&req.current_spec, &patches);
+    }
 
     let errors = validate::validate_spec(&new_spec, &req.catalog);
     if !errors.is_empty() {
@@ -481,7 +564,8 @@ async fn call_claude(
 ) -> Result<String, String> {
     let body = json!({
         "model": model,
-        "max_tokens": 4096,
+        "max_tokens": 2048,
+        "stream": true,
         "messages": [{"role": "user", "content": prompt_text}]
     });
 
@@ -496,20 +580,51 @@ async fn call_claude(
         .map_err(|e| format!("HTTP error: {}", e))?;
 
     let status = resp.status();
-    let text = resp
-        .text()
-        .await
-        .map_err(|e| format!("Read error: {}", e))?;
-
     if !status.is_success() {
+        let text = resp.text().await.map_err(|e| format!("Read error: {}", e))?;
         return Err(format!("Claude API {}: {}", status, text));
     }
 
-    let parsed: Value = serde_json::from_str(&text).map_err(|e| format!("JSON parse: {}", e))?;
-    parsed["content"][0]["text"]
-        .as_str()
-        .ok_or_else(|| "No text in Claude response".to_string())
-        .map(String::from)
+    let mut full_text = String::new();
+    let mut stream = resp.bytes_stream();
+    use futures_util::StreamExt;
+    let mut buf = String::new();
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Stream error: {}", e))?;
+        buf.push_str(&String::from_utf8_lossy(&chunk));
+
+        while let Some(pos) = buf.find('\n') {
+            let line = buf[..pos].to_string();
+            buf = buf[pos + 1..].to_string();
+
+            let line = line.trim();
+            if let Some(data) = line.strip_prefix("data: ") {
+                if data == "[DONE]" {
+                    continue;
+                }
+                if let Ok(event) = serde_json::from_str::<Value>(data) {
+                    if event["type"] == "content_block_delta" {
+                        if let Some(text) = event["delta"]["text"].as_str() {
+                            full_text.push_str(text);
+                        }
+                    }
+                    if event["type"] == "error" {
+                        return Err(format!(
+                            "Claude stream error: {}",
+                            event["error"]["message"].as_str().unwrap_or("unknown")
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    if full_text.is_empty() {
+        return Err("No text received from Claude stream".to_string());
+    }
+
+    Ok(full_text)
 }
 
 fn extract_json_from_response(text: &str) -> Option<String> {
