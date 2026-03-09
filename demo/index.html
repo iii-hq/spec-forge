@@ -3,214 +3,557 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>iii-render</title>
+<title>spec-forge | iii</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0a0a0b;
-    --surface: #141416;
-    --surface2: #1c1c20;
-    --border: #2a2a30;
-    --text: #e4e4e7;
-    --text2: #a1a1aa;
-    --accent: #6366f1;
-    --accent2: #818cf8;
-    --green: #22c55e;
-    --red: #ef4444;
-    --orange: #f59e0b;
-    --radius: 8px;
-    --json-key: #818cf8;
-    --json-str: #22c55e;
-    --json-num: #f59e0b;
-    --json-bool: #f472b6;
-    --json-brace: #a1a1aa;
+    --black: #000000;
+    --dark: #0a0a0a;
+    --dark2: #111111;
+    --dark3: #1a1a1a;
+    --medium-dark: #222222;
+    --medium: #333333;
+    --medium-light: #555555;
+    --light: #f4f4f4;
+    --light2: #999999;
+    --light3: #666666;
+    --accent: #F3F724;
+    --accent-dim: rgba(243,247,36,0.1);
+    --accent-mid: rgba(243,247,36,0.3);
+    --primary: #5865F2;
+    --primary-light: #7289DA;
+    --red: #FF4444;
+    --green: #44FF88;
+    --mono: "Chivo Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --radius: 3px;
+    --radius-lg: 6px;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
 
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    height: 100vh;
-    overflow: hidden;
+    font-family: var(--mono);
+    background: var(--black);
+    color: var(--light);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
   }
 
-  .app {
-    display: grid;
-    grid-template-rows: 52px 1fr;
-    height: 100vh;
-  }
+  ::selection { background: var(--accent); color: var(--black); }
 
-  header {
+  /* NAV */
+  nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    height: 56px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 20px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--medium-dark);
   }
 
-  header h1 {
-    font-size: 15px;
+  .nav-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .iii-logo {
+    display: flex;
+    gap: 4px;
+    align-items: flex-start;
+  }
+
+  .iii-logo .col {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .iii-logo .sq {
+    width: 8px;
+    height: 8px;
+    background: var(--light);
+  }
+
+  .iii-logo .bar {
+    width: 8px;
+    height: 20px;
+    background: var(--light);
+  }
+
+  .nav-title {
+    font-size: 14px;
     font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    color: var(--light);
+    text-decoration: none;
+    letter-spacing: -0.02em;
   }
 
-  header h1 span { color: var(--accent2); font-weight: 700; }
+  .nav-title span { color: var(--light3); font-weight: 400; }
 
-  .header-controls {
+  .nav-right {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 20px;
   }
 
-  .status {
+  .nav-link {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--light2);
+    text-decoration: none;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: color 0.15s;
+  }
+
+  .nav-link:hover { color: var(--light); }
+
+  .status-pill {
     display: flex;
     align-items: center;
     gap: 6px;
     font-size: 11px;
-    color: var(--text2);
+    color: var(--light2);
+    padding: 4px 10px;
+    border: 1px solid var(--medium);
+    border-radius: var(--radius);
   }
 
   .status-dot {
-    width: 7px;
-    height: 7px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: var(--red);
+    transition: background 0.3s;
   }
 
   .status-dot.connected { background: var(--green); }
 
-  .prompt-bar {
+  /* HERO */
+  .hero {
+    padding: 140px 32px 80px;
+    text-align: center;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  .hero-label {
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--light3);
+    margin-bottom: 32px;
+  }
+
+  .hero h1 {
+    font-size: clamp(40px, 6vw, 72px);
+    font-weight: 800;
+    line-height: 1.0;
+    letter-spacing: -0.04em;
+    margin-bottom: 28px;
+  }
+
+  .hero h1 .yellow { color: var(--accent); }
+  .hero h1 .dim { color: var(--medium-light); font-weight: 400; }
+
+  .hero-sub {
+    font-size: 16px;
+    font-weight: 400;
+    color: var(--light2);
+    line-height: 1.6;
+    max-width: 580px;
+    margin: 0 auto 48px;
+  }
+
+  .hero-actions {
     display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 40px;
+  }
+
+  .btn {
+    display: inline-flex;
     align-items: center;
     gap: 8px;
-    flex: 1;
-    max-width: 700px;
-    margin: 0 24px;
-  }
-
-  .prompt-bar input {
-    flex: 1;
-    height: 34px;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text);
+    height: 40px;
+    padding: 0 20px;
+    font-family: var(--mono);
     font-size: 13px;
-    padding: 0 12px;
-    outline: none;
-  }
-
-  .prompt-bar input:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(99,102,241,0.15);
-  }
-
-  .prompt-bar .btn {
-    height: 34px;
-    padding: 0 16px;
-    border: none;
-    border-radius: var(--radius);
-    font-size: 12px;
     font-weight: 600;
+    border: none;
     cursor: pointer;
-    white-space: nowrap;
+    transition: all 0.15s;
+    text-decoration: none;
+  }
+
+  .btn-primary {
+    background: var(--primary);
+    color: white;
+    border-radius: 8px;
+  }
+
+  .btn-primary:hover { background: var(--primary-light); }
+
+  .btn-accent {
+    background: var(--accent);
+    color: var(--black);
+    border-radius: 9999px;
+  }
+
+  .btn-accent:hover { filter: brightness(1.1); }
+
+  .btn-outline {
+    background: transparent;
+    color: var(--light);
+    border: 1px solid var(--medium);
+    border-radius: var(--radius);
+  }
+
+  .btn-outline:hover { border-color: var(--light3); }
+
+  .btn-sm {
+    height: 34px;
+    padding: 0 14px;
+    font-size: 12px;
+  }
+
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .example-chips {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .example-chip {
+    padding: 6px 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--light3);
+    background: transparent;
+    border: 1px solid var(--medium);
+    border-radius: var(--radius);
+    cursor: pointer;
     transition: all 0.15s;
   }
 
-  .btn-primary { background: var(--accent); color: white; }
-  .btn-primary:hover { background: var(--accent2); }
-  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-
-  .btn-ghost {
-    background: transparent;
-    color: var(--text2);
-    border: 1px solid var(--border);
+  .example-chip:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-dim);
   }
-  .btn-ghost:hover { color: var(--text); background: var(--surface2); }
-  .btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  .main {
+  /* DIVIDER */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--medium-dark);
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  /* SECTIONS */
+  section {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 80px 32px;
+  }
+
+  .section-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--accent);
+    margin-bottom: 20px;
+  }
+
+  /* STEPS */
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 48px;
+  }
+
+  .step-num {
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 12px;
+  }
+
+  .step h3 {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    letter-spacing: -0.02em;
+  }
+
+  .step p {
+    font-size: 13px;
+    color: var(--light2);
+    line-height: 1.7;
+  }
+
+  /* CHECKLIST */
+  .checklist {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 40px;
+    max-width: 700px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .checklist li {
+    font-size: 14px;
+    color: var(--light);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    line-height: 1.5;
+  }
+
+  .check-icon {
+    color: var(--accent);
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  /* CODE BLOCKS */
+  .code-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+
+  .code-block {
+    background: var(--dark2);
+    border: 1px solid var(--medium-dark);
+    border-radius: var(--radius-lg);
     overflow: hidden;
   }
 
-  .panel {
+  .code-block-header {
+    padding: 10px 16px;
+    font-size: 11px;
+    color: var(--light3);
+    border-bottom: 1px solid var(--medium-dark);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .code-block-body {
+    padding: 16px;
+    font-size: 12px;
+    line-height: 1.7;
+    overflow-x: auto;
+    max-height: 320px;
+    overflow-y: auto;
+    color: var(--light2);
+  }
+
+  .j-key { color: #a78bfa; }
+  .j-str { color: var(--accent); }
+  .j-num { color: #FF8844; }
+  .j-bool { color: #44FF88; }
+
+  /* PLAYGROUND */
+  .playground-section {
+    padding: 80px 32px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  .playground-header {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+
+  .playground-header h2 {
+    font-size: 36px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    margin-bottom: 10px;
+  }
+
+  .playground-header p {
+    font-size: 14px;
+    color: var(--light2);
+  }
+
+  .playground {
+    border: 1px solid var(--medium-dark);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: var(--dark);
+  }
+
+  .pg-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--medium-dark);
+    background: var(--dark2);
+  }
+
+  .pg-toolbar input {
+    flex: 1;
+    height: 38px;
+    background: var(--black);
+    border: 1px solid var(--medium);
+    border-radius: var(--radius);
+    color: var(--light);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 0 14px;
+    outline: none;
+  }
+
+  .pg-toolbar input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent-dim);
+  }
+
+  .pg-toolbar input::placeholder { color: var(--light3); }
+
+  .send-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: var(--radius);
+    border: none;
+    background: var(--accent);
+    color: var(--black);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    transition: filter 0.15s;
+  }
+
+  .send-btn:hover { filter: brightness(1.1); }
+  .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .send-btn svg { width: 16px; height: 16px; }
+
+  .pg-panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 520px;
+  }
+
+  .pg-panel {
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
 
-  .panel:first-child { border-right: 1px solid var(--border); }
+  .pg-panel:first-child { border-right: 1px solid var(--medium-dark); }
 
-  .panel-header {
+  .pg-panel-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 16px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--text2);
+    padding: 0 16px;
+    height: 38px;
+    border-bottom: 1px solid var(--medium-dark);
+    background: var(--dark2);
   }
 
-  .panel-header .badge {
-    font-size: 10px;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-weight: 500;
-    text-transform: none;
-    letter-spacing: 0;
+  .pg-tabs {
+    display: flex;
+    gap: 0;
   }
 
-  .badge-streaming {
-    background: rgba(99,102,241,0.15);
-    color: var(--accent2);
+  .pg-tab {
+    padding: 0 12px;
+    height: 38px;
     display: flex;
     align-items: center;
-    gap: 4px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--light3);
+    cursor: pointer;
+    border: none;
+    background: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color 0.15s;
   }
 
-  .badge-streaming .dot {
+  .pg-tab:hover { color: var(--light2); }
+  .pg-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .pg-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: var(--radius);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .pg-badge-streaming {
+    background: var(--accent-dim);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .pg-badge-streaming .pulse-dot {
     width: 5px;
     height: 5px;
-    background: var(--accent);
     border-radius: 50%;
+    background: var(--accent);
     animation: pulse 1s infinite;
   }
 
-  .badge-cached {
-    background: rgba(34,197,94,0.15);
+  .pg-badge-cached {
+    background: rgba(68,255,136,0.1);
     color: var(--green);
   }
 
-  .badge-done {
-    background: rgba(255,255,255,0.06);
-    color: var(--text2);
+  .pg-badge-done {
+    background: rgba(244,244,244,0.06);
+    color: var(--light2);
   }
 
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-  .json-panel {
+  .pg-body {
     flex: 1;
     overflow-y: auto;
-    padding: 16px;
-    font-family: "SF Mono", "Fira Code", "JetBrains Mono", Menlo, monospace;
-    font-size: 12.5px;
-    line-height: 1.65;
-    white-space: pre-wrap;
-    word-break: break-word;
-    position: relative;
+    background: var(--black);
   }
 
-  .json-panel .cursor {
+  .json-view {
+    padding: 20px;
+    font-size: 12.5px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .json-view .cursor {
     display: inline-block;
     width: 2px;
     height: 15px;
@@ -222,18 +565,23 @@
 
   @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
 
-  .json-panel .j-key { color: var(--json-key); }
-  .json-panel .j-str { color: var(--json-str); }
-  .json-panel .j-num { color: var(--json-num); }
-  .json-panel .j-bool { color: var(--json-bool); }
-  .json-panel .j-brace { color: var(--json-brace); }
-  .json-panel .j-null { color: var(--text2); }
-
-  .preview-panel {
-    flex: 1;
-    overflow-y: auto;
-    padding: 24px;
+  .json-placeholder {
+    color: var(--light3);
+    font-size: 13px;
+    padding: 40px 20px;
+    text-align: center;
   }
+
+  .json-placeholder kbd {
+    font-size: 11px;
+    padding: 2px 8px;
+    border: 1px solid var(--medium);
+    border-radius: var(--radius);
+    background: var(--dark2);
+    color: var(--accent);
+  }
+
+  .preview-view { padding: 24px; }
 
   .preview-empty {
     display: flex;
@@ -241,78 +589,121 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: var(--text2);
+    min-height: 400px;
+    color: var(--light3);
     font-size: 13px;
-    gap: 8px;
   }
 
-  .preview-empty kbd {
+  .pg-export {
+    font-family: var(--mono);
     font-size: 11px;
-    padding: 2px 6px;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    font-family: inherit;
+    color: var(--light3);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: color 0.15s;
   }
 
-  .bottom-bar {
-    display: flex;
-    gap: 12px;
-    padding: 0 16px;
-    background: var(--surface);
-    border-top: 1px solid var(--border);
+  .pg-export:hover { color: var(--accent); }
+
+  /* COMPARISON */
+  .comparison {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .comparison th {
+    text-align: left;
+    padding: 12px 20px;
     font-size: 11px;
-    color: var(--text2);
-    height: 28px;
-    align-items: center;
-    grid-column: 1 / -1;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--light3);
+    border-bottom: 1px solid var(--medium-dark);
   }
 
-  .bottom-bar strong { color: var(--text); }
+  .comparison td {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--medium-dark);
+    color: var(--light2);
+  }
 
+  .comparison td:first-child { color: var(--light); font-weight: 600; }
+  .comparison .val { color: var(--accent); font-weight: 600; }
+  .comparison .dim { color: var(--light3); }
+
+  .comparison thead th:last-child,
+  .comparison tbody td:last-child {
+    background: rgba(243,247,36,0.02);
+  }
+
+  /* DRAWER */
   .catalog-drawer {
     position: fixed;
-    top: 52px;
+    top: 0;
     right: 0;
-    width: 420px;
-    height: calc(100vh - 52px);
-    background: var(--surface);
-    border-left: 1px solid var(--border);
-    z-index: 100;
+    width: 440px;
+    height: 100vh;
+    background: var(--dark);
+    border-left: 1px solid var(--medium-dark);
+    z-index: 300;
     transform: translateX(100%);
-    transition: transform 0.2s ease;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     flex-direction: column;
   }
 
   .catalog-drawer.open { transform: translateX(0); }
 
-  .drawer-header {
+  .drawer-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--medium-dark);
   }
 
-  .drawer-header h3 { font-size: 13px; font-weight: 600; }
+  .drawer-head h3 {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
 
   .drawer-close {
-    background: none;
-    border: none;
-    color: var(--text2);
-    font-size: 18px;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius);
+    background: var(--dark2);
+    border: 1px solid var(--medium);
+    color: var(--light2);
+    font-size: 16px;
     cursor: pointer;
-    padding: 0 4px;
+    display: grid;
+    place-items: center;
   }
+
+  .drawer-close:hover { color: var(--light); border-color: var(--light3); }
 
   .drawer-body {
     flex: 1;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    padding: 12px 16px;
-    gap: 12px;
+    padding: 16px 20px;
+    gap: 14px;
+  }
+
+  .drawer-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--light3);
   }
 
   .catalog-presets {
@@ -322,32 +713,35 @@
   }
 
   .preset-chip {
-    padding: 4px 10px;
-    border-radius: 12px;
+    padding: 5px 12px;
+    border-radius: var(--radius);
+    font-family: var(--mono);
     font-size: 11px;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--text2);
+    font-weight: 500;
+    background: transparent;
+    border: 1px solid var(--medium);
+    color: var(--light2);
     cursor: pointer;
     transition: all 0.15s;
   }
 
   .preset-chip:hover, .preset-chip.active {
     border-color: var(--accent);
-    color: var(--accent2);
-    background: rgba(99,102,241,0.1);
+    color: var(--accent);
+    background: var(--accent-dim);
   }
 
   .drawer-body textarea {
     flex: 1;
     width: 100%;
-    background: var(--surface2);
-    border: 1px solid var(--border);
+    background: var(--black);
+    border: 1px solid var(--medium);
     border-radius: var(--radius);
-    color: var(--text);
-    font-family: "SF Mono", "Fira Code", monospace;
+    color: var(--light);
+    font-family: var(--mono);
     font-size: 11px;
-    padding: 10px;
+    line-height: 1.6;
+    padding: 12px;
     resize: none;
     outline: none;
     tab-size: 2;
@@ -355,28 +749,59 @@
 
   .drawer-body textarea:focus { border-color: var(--accent); }
 
+  .refine-input {
+    width: 100%;
+    height: 36px;
+    background: var(--black);
+    border: 1px solid var(--medium);
+    border-radius: var(--radius);
+    color: var(--light);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 0 12px;
+    outline: none;
+  }
+
+  .refine-input:focus { border-color: var(--accent); }
+
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.4);
-    z-index: 99;
+    background: rgba(0,0,0,0.6);
+    z-index: 250;
     display: none;
   }
 
   .overlay.open { display: block; }
 
+  /* FOOTER */
+  footer {
+    text-align: center;
+    padding: 48px 32px;
+    font-size: 12px;
+    color: var(--light3);
+    border-top: 1px solid var(--medium-dark);
+    margin-top: 40px;
+    letter-spacing: 0.3px;
+  }
+
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+
+  /* RENDERED COMPONENTS */
   .iii-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    background: var(--dark2);
+    border: 1px solid var(--medium-dark);
+    border-radius: var(--radius-lg);
     padding: 20px;
   }
 
   .iii-card h3 {
-    font-size: 16px;
-    font-weight: 600;
+    font-size: 15px;
+    font-weight: 700;
     margin-bottom: 16px;
-    color: var(--text);
+    color: var(--light);
+    letter-spacing: -0.02em;
   }
 
   .iii-card > div { margin-top: 12px; }
@@ -385,195 +810,407 @@
     padding: 10px 20px;
     border: none;
     border-radius: var(--radius);
-    font-size: 14px;
-    font-weight: 500;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
     cursor: pointer;
-    background: var(--surface2);
-    color: var(--text);
-    border: 1px solid var(--border);
+    background: var(--dark3);
+    color: var(--light);
+    border: 1px solid var(--medium);
   }
 
-  .iii-button button.iii-primary {
-    background: var(--accent);
-    color: white;
-    border-color: var(--accent);
-  }
-
-  .iii-button button.iii-secondary {
-    background: var(--surface2);
-    color: var(--text);
-  }
-
-  .iii-button button.iii-danger {
-    background: var(--red);
-    color: white;
-    border-color: var(--red);
-  }
+  .iii-button button.iii-primary { background: var(--primary); color: white; border-color: var(--primary); }
+  .iii-button button.iii-secondary { background: var(--dark3); color: var(--light); }
+  .iii-button button.iii-danger { background: var(--red); color: white; border-color: var(--red); }
 
   .iii-input input {
     width: 100%;
     padding: 10px 12px;
-    background: var(--surface2);
-    border: 1px solid var(--border);
+    background: var(--black);
+    border: 1px solid var(--medium);
     border-radius: var(--radius);
-    color: var(--text);
-    font-size: 14px;
+    color: var(--light);
+    font-family: var(--mono);
+    font-size: 13px;
     outline: none;
   }
 
   .iii-input input:focus { border-color: var(--accent); }
 
-  .iii-text p { color: var(--text); line-height: 1.6; }
+  .iii-text p { color: var(--light2); line-height: 1.6; font-size: 13px; }
 
-  .iii-link a {
-    color: var(--accent2);
-    text-decoration: none;
-    font-size: 13px;
-  }
-
+  .iii-link a { color: var(--accent); text-decoration: none; font-size: 13px; }
   .iii-link a:hover { text-decoration: underline; }
 
-  .iii-metric {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
+  .iii-metric { display: flex; flex-direction: column; gap: 4px; }
 
   .iii-metric-label {
-    font-size: 12px;
-    color: var(--text2);
+    font-size: 11px;
+    color: var(--light3);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 1px;
+    font-weight: 600;
   }
 
   .iii-metric-value {
     font-size: 28px;
-    font-weight: 700;
-    color: var(--text);
+    font-weight: 800;
+    color: var(--light);
+    letter-spacing: -0.03em;
   }
 
-  .iii-table table {
-    width: 100%;
-    border-collapse: collapse;
-  }
+  .iii-table table { width: 100%; border-collapse: collapse; }
 
   .iii-table th, .iii-table td {
     padding: 8px 12px;
     text-align: left;
-    border-bottom: 1px solid var(--border);
-    font-size: 13px;
+    border-bottom: 1px solid var(--medium-dark);
+    font-size: 12px;
   }
 
   .iii-table th {
-    color: var(--text2);
+    color: var(--light3);
     font-weight: 600;
-    font-size: 11px;
+    font-size: 10px;
     text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
 
   .iii-list ul { list-style: none; }
-  .iii-list li { padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .iii-list li { padding: 8px 0; border-bottom: 1px solid var(--medium-dark); font-size: 13px; }
 
   .iii-unknown {
     padding: 8px;
-    background: rgba(245,158,11,0.1);
-    border: 1px dashed var(--orange);
+    background: rgba(255,136,68,0.08);
+    border: 1px dashed var(--medium);
     border-radius: var(--radius);
     font-size: 12px;
   }
 
-  .iii-type-label { font-weight: 600; color: var(--orange); }
-  .iii-unknown pre { margin-top: 4px; font-size: 10px; color: var(--text2); }
+  .iii-type-label { font-weight: 700; color: #FF8844; }
+  .iii-unknown pre { margin-top: 4px; font-size: 10px; color: var(--light3); }
 
   .iii-skeleton {
     padding: 16px;
     border-radius: var(--radius);
-    background: var(--surface2);
-    border: 1px dashed var(--border);
+    background: var(--dark2);
+    border: 1px dashed var(--medium);
     margin: 8px 0;
-    overflow: hidden;
   }
 
   .skeleton-bar {
-    height: 14px;
-    background: linear-gradient(90deg, var(--border) 25%, var(--surface) 50%, var(--border) 75%);
+    height: 12px;
+    background: linear-gradient(90deg, var(--medium-dark) 25%, var(--dark) 50%, var(--medium-dark) 75%);
     background-size: 200% 100%;
-    border-radius: 4px;
+    border-radius: 2px;
     margin-bottom: 8px;
     animation: shimmer 1.5s infinite;
   }
 
   .skeleton-bar.short { width: 60%; }
 
-  @keyframes shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
-  }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  @keyframes streamIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .stream-in { animation: streamIn 0.25s ease-out; }
 
-  @keyframes streamIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
+  @media (max-width: 768px) {
+    .steps { grid-template-columns: 1fr; gap: 32px; }
+    .code-grid { grid-template-columns: 1fr; }
+    .pg-panels { grid-template-columns: 1fr; }
+    .pg-panel:first-child { border-right: none; border-bottom: 1px solid var(--medium-dark); }
+    .hero h1 { font-size: 36px; }
+    nav { padding: 0 16px; }
+    .catalog-drawer { width: 100%; }
+    .checklist { padding: 0 16px; }
   }
-
-  .stream-in { animation: streamIn 0.3s ease-out; }
 </style>
 </head>
 <body>
-<div class="app">
-  <header>
-    <h1><span>iii</span>-render</h1>
-    <div class="prompt-bar">
-      <input type="text" id="prompt" placeholder="Describe a UI..." value="A dashboard with three metric cards showing revenue, users, and orders, plus a data table below" />
-      <button class="btn btn-primary" id="streamBtn" onclick="doStream()">Stream</button>
-      <button class="btn btn-ghost" id="generateBtn" onclick="doGenerate()">Instant</button>
-      <button class="btn btn-ghost" id="refineBtn" onclick="doRefine()" disabled title="Generate first, then refine">Refine</button>
-      <button class="btn btn-ghost" onclick="toggleDrawer()">Catalog</button>
-    </div>
-    <div class="status">
-      <div class="status-dot" id="statusDot"></div>
-      <span id="statusText">...</span>
-    </div>
-  </header>
 
-  <div class="main">
-    <div class="panel">
-      <div class="panel-header">
-        <span>JSON Spec</span>
-        <span class="badge" id="jsonBadge"></span>
-      </div>
-      <div class="json-panel" id="jsonPanel">
-        <span class="j-brace" style="color:var(--text2);font-size:13px">Type a prompt and press Stream to see the JSON appear live...</span>
+<!-- NAV -->
+<nav>
+  <div class="nav-left">
+    <div class="iii-logo">
+      <div class="col"><div class="sq"></div><div class="bar"></div></div>
+      <div class="col"><div class="sq"></div><div class="bar"></div></div>
+      <div class="col"><div class="sq"></div><div class="bar"></div></div>
+    </div>
+    <a href="#" class="nav-title">spec-forge <span>/ iii</span></a>
+  </div>
+  <div class="nav-right">
+    <a href="#playground" class="nav-link">Playground</a>
+    <a href="#how" class="nav-link">How</a>
+    <a href="#comparison" class="nav-link">Compare</a>
+    <div class="status-pill">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">checking</span>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-label">The production layer for generative UI</div>
+  <h1>
+    <span class="yellow">One Forge.</span><br>
+    <span class="dim">cache</span> any <span class="yellow">spec.</span>
+  </h1>
+  <p class="hero-sub">
+    Rust generation server for json-render. Caching, streaming,
+    rate limiting, and spec diffing so you never call the LLM twice
+    for the same UI.
+  </p>
+  <div class="hero-actions">
+    <a href="#playground" class="btn btn-accent">Playground</a>
+    <a href="https://github.com/iii-hq/spec-forge" class="btn btn-outline">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </div>
+
+  <ul class="checklist">
+    <li><span class="check-icon">&#10003;</span> SHA-256 exact + TF-IDF semantic caching &mdash; repeat requests return in 0ms</li>
+    <li><span class="check-icon">&#10003;</span> Incremental JSON parser &mdash; elements stream live as Claude generates</li>
+    <li><span class="check-icon">&#10003;</span> Patch-based updates &mdash; refine UI without full regeneration</li>
+    <li><span class="check-icon">&#10003;</span> Rate limiting + API key server-side &mdash; safe for production</li>
+  </ul>
+</div>
+
+<hr class="divider">
+
+<!-- HOW IT WORKS -->
+<section id="how">
+  <div class="section-label">How it works</div>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <h3>Define catalog</h3>
+      <p>Set the guardrails. Define which components, props, and actions the AI can use. Every interface is constrained to your design system.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <h3>AI generates</h3>
+      <p>Describe what you want. Claude generates a JSON spec constrained to your catalog. Exact + semantic caching means repeat requests are 0ms.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <h3>Stream &amp; render</h3>
+      <p>Components render progressively as JSON streams in. Refine with patches instead of regeneration. Rate limiting protects your API budget.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- CODE EXAMPLES -->
+<section>
+  <div class="code-grid">
+    <div>
+      <div class="section-label">Input</div>
+      <h3 style="font-size:20px;font-weight:700;margin-bottom:6px;letter-spacing:-0.02em">Define your catalog</h3>
+      <p style="font-size:13px;color:var(--light2);margin-bottom:16px">Components, actions, constraints.</p>
+      <div class="code-block">
+        <div class="code-block-header">catalog.json</div>
+        <div class="code-block-body"><span class="j-key">"components"</span>: {
+  <span class="j-key">"Card"</span>: {
+    <span class="j-key">"description"</span>: <span class="j-str">"Container card"</span>,
+    <span class="j-key">"children"</span>: <span class="j-bool">true</span>
+  },
+  <span class="j-key">"Input"</span>: {
+    <span class="j-key">"description"</span>: <span class="j-str">"Text input"</span>,
+    <span class="j-key">"props"</span>: {
+      <span class="j-key">"placeholder"</span>: <span class="j-str">"string"</span>,
+      <span class="j-key">"type"</span>: <span class="j-str">"string"</span>
+    }
+  },
+  <span class="j-key">"Button"</span>: {
+    <span class="j-key">"description"</span>: <span class="j-str">"Clickable button"</span>,
+    <span class="j-key">"props"</span>: {
+      <span class="j-key">"label"</span>: <span class="j-str">"string"</span>,
+      <span class="j-key">"variant"</span>: <span class="j-str">"primary|secondary"</span>
+    }
+  }
+}</div>
       </div>
     </div>
-    <div class="panel">
-      <div class="panel-header">
-        <span>Preview</span>
-        <span id="previewMeta" style="font-weight:400;text-transform:none;letter-spacing:0"></span>
+    <div>
+      <div class="section-label">Output</div>
+      <h3 style="font-size:20px;font-weight:700;margin-bottom:6px;letter-spacing:-0.02em">AI generates JSON</h3>
+      <p style="font-size:13px;color:var(--light2);margin-bottom:16px">Constrained output your components render.</p>
+      <div class="code-block">
+        <div class="code-block-header">spec.json</div>
+        <div class="code-block-body">{
+  <span class="j-key">"root"</span>: <span class="j-str">"card-1"</span>,
+  <span class="j-key">"elements"</span>: {
+    <span class="j-key">"card-1"</span>: {
+      <span class="j-key">"type"</span>: <span class="j-str">"Card"</span>,
+      <span class="j-key">"props"</span>: { <span class="j-key">"title"</span>: <span class="j-str">"Login"</span> },
+      <span class="j-key">"children"</span>: [<span class="j-str">"input-1"</span>, <span class="j-str">"btn-1"</span>]
+    },
+    <span class="j-key">"input-1"</span>: {
+      <span class="j-key">"type"</span>: <span class="j-str">"Input"</span>,
+      <span class="j-key">"props"</span>: {
+        <span class="j-key">"placeholder"</span>: <span class="j-str">"Email"</span>,
+        <span class="j-key">"type"</span>: <span class="j-str">"email"</span>
+      }
+    },
+    <span class="j-key">"btn-1"</span>: {
+      <span class="j-key">"type"</span>: <span class="j-str">"Button"</span>,
+      <span class="j-key">"props"</span>: {
+        <span class="j-key">"label"</span>: <span class="j-str">"Sign In"</span>,
+        <span class="j-key">"variant"</span>: <span class="j-str">"primary"</span>
+      }
+    }
+  }
+}</div>
       </div>
-      <div class="preview-panel" id="previewPanel">
-        <div class="preview-empty">
-          <span>Rendered UI will appear here</span>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- PLAYGROUND -->
+<div class="playground-section" id="playground">
+  <div class="playground-header">
+    <div class="section-label" style="margin-bottom:12px">Interactive</div>
+    <h2>Playground</h2>
+    <p>Type a prompt and watch JSON stream in live</p>
+  </div>
+
+  <div class="playground">
+    <div class="pg-toolbar">
+      <input type="text" id="prompt" placeholder="Describe a UI..." value="A dashboard with three metric cards showing revenue, users, and orders, plus a data table below" />
+      <button class="btn btn-sm btn-outline" onclick="toggleDrawer()">Catalog</button>
+      <button class="btn btn-sm btn-outline" id="refineBtn" onclick="doRefine()" disabled>Refine</button>
+      <button class="send-btn" id="streamBtn" onclick="doStream()" title="Stream (Enter)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+
+    <div style="display:flex;gap:8px;padding:8px 16px;border-bottom:1px solid var(--medium-dark);background:var(--dark2)">
+      <div class="example-chip" onclick="setPrompt('Create a login form with email and password')">login form</div>
+      <div class="example-chip" onclick="setPrompt('Build a feedback form with rating stars')">feedback form</div>
+      <div class="example-chip" onclick="setPrompt('A dashboard with three metric cards and a data table')">dashboard</div>
+      <div class="example-chip" onclick="setPrompt('A product card with image, title, price, and add to cart button')">product card</div>
+    </div>
+
+    <div class="pg-panels">
+      <div class="pg-panel">
+        <div class="pg-panel-head">
+          <div class="pg-tabs">
+            <button class="pg-tab active" data-tab="json">JSON</button>
+            <button class="pg-tab" data-tab="stream">STREAM</button>
+            <button class="pg-tab" onclick="toggleDrawer()">CATALOG</button>
+          </div>
+          <span class="pg-badge" id="jsonBadge"></span>
+        </div>
+        <div class="pg-body">
+          <div class="json-view" id="jsonPanel">
+            <div class="json-placeholder">
+              Type a prompt and press <kbd>Enter</kbd> to see JSON stream live
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pg-panel">
+        <div class="pg-panel-head">
+          <div class="pg-tabs">
+            <button class="pg-tab active">LIVE RENDER</button>
+            <button class="pg-tab" onclick="showStaticCode()">STATIC CODE</button>
+          </div>
+          <button class="pg-export" id="exportBtn" onclick="exportSpec()" style="display:none">EXPORT {}</button>
+        </div>
+        <div class="pg-body">
+          <div class="preview-view" id="previewPanel">
+            <div class="preview-empty">
+              <span>Rendered UI will appear here</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 </div>
 
+<hr class="divider">
+
+<!-- COMPARISON -->
+<section id="comparison">
+  <div style="text-align:center;margin-bottom:48px">
+    <div class="section-label" style="margin-bottom:12px">Compare</div>
+    <h2 style="font-size:32px;font-weight:800;letter-spacing:-0.03em;margin-bottom:10px">Why spec-forge</h2>
+    <p style="font-size:14px;color:var(--light2)">json-render calls the LLM on every request. spec-forge adds a production layer.</p>
+  </div>
+  <table class="comparison">
+    <thead>
+      <tr>
+        <th></th>
+        <th>json-render (direct)</th>
+        <th>spec-forge</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Cache</td>
+        <td><span class="dim">None</span></td>
+        <td><span class="val">SHA-256 exact + TF-IDF semantic</span></td>
+      </tr>
+      <tr>
+        <td>Repeat request</td>
+        <td><span class="dim">3-5s LLM call</span></td>
+        <td><span class="val">0ms</span></td>
+      </tr>
+      <tr>
+        <td>UI update</td>
+        <td><span class="dim">Full regeneration</span></td>
+        <td><span class="val">Patch-based (Add/Replace/Remove)</span></td>
+      </tr>
+      <tr>
+        <td>Streaming</td>
+        <td><span class="dim">Basic</span></td>
+        <td><span class="val">Incremental parser + element SSE</span></td>
+      </tr>
+      <tr>
+        <td>Rate limiting</td>
+        <td><span class="dim">None</span></td>
+        <td><span class="val">Token bucket + concurrency semaphore</span></td>
+      </tr>
+      <tr>
+        <td>API key</td>
+        <td><span class="dim">Client-side</span></td>
+        <td><span class="val">Server-side only</span></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  Built with Rust + Axum. Compatible with
+  <a href="https://github.com/vercel-labs/json-render">json-render</a>
+  renderers. Powered by <a href="https://iii.dev">iii</a>.
+</footer>
+
+<!-- OVERLAYS -->
 <div class="overlay" id="overlay" onclick="toggleDrawer()"></div>
 <div class="catalog-drawer" id="drawer">
-  <div class="drawer-header">
+  <div class="drawer-head">
     <h3>Component Catalog</h3>
     <button class="drawer-close" onclick="toggleDrawer()">&times;</button>
   </div>
   <div class="drawer-body">
+    <div class="drawer-label">Presets</div>
     <div class="catalog-presets">
       <div class="preset-chip active" onclick="loadPreset('dashboard', this)">Dashboard</div>
       <div class="preset-chip" onclick="loadPreset('form', this)">Forms</div>
       <div class="preset-chip" onclick="loadPreset('ecommerce', this)">E-Commerce</div>
       <div class="preset-chip" onclick="loadPreset('minimal', this)">Minimal</div>
     </div>
-    <label style="font-size:11px;color:var(--text2)">Refine prompt (edit existing spec):</label>
-    <input type="text" id="refinePrompt" placeholder="e.g. Add a search bar at the top" style="width:100%;height:34px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;padding:0 12px;outline:none" />
+    <div class="drawer-label">Refine prompt</div>
+    <input type="text" class="refine-input" id="refinePrompt" placeholder="e.g. Add a search bar at the top" />
+    <div class="drawer-label">Catalog JSON</div>
     <textarea id="catalogEditor"></textarea>
   </div>
 </div>
@@ -626,6 +1263,11 @@ const PRESETS = {
   },
 };
 
+function setPrompt(text) {
+  document.getElementById("prompt").value = text;
+  document.getElementById("prompt").focus();
+}
+
 function getCatalog() {
   try { return JSON.parse(document.getElementById("catalogEditor").value); }
   catch { return null; }
@@ -644,27 +1286,58 @@ function toggleDrawer() {
 
 function setLoading(on) {
   document.getElementById("streamBtn").disabled = on;
-  document.getElementById("generateBtn").disabled = on;
+  document.getElementById("refineBtn").disabled = on || !currentSpec;
 }
 
 function setBadge(type, text) {
   const b = document.getElementById("jsonBadge");
-  b.className = "badge";
-  if (type === "streaming") { b.classList.add("badge-streaming"); b.innerHTML = `<span class="dot"></span>${text}`; }
-  else if (type === "cached") { b.classList.add("badge-cached"); b.textContent = text; }
-  else { b.classList.add("badge-done"); b.textContent = text; }
+  b.className = "pg-badge";
+  if (type === "streaming") {
+    b.classList.add("pg-badge-streaming");
+    b.innerHTML = '<span class="pulse-dot"></span>' + text;
+  } else if (type === "cached") {
+    b.classList.add("pg-badge-cached");
+    b.textContent = text;
+  } else {
+    b.classList.add("pg-badge-done");
+    b.textContent = text;
+  }
 }
 
 function syntaxHighlight(json) {
   return json
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?)/g, (match) => {
-      if (/:$/.test(match)) return `<span class="j-key">${match}</span>`;
-      return `<span class="j-str">${match}</span>`;
+      if (/:$/.test(match)) return '<span class="j-key">' + match + '</span>';
+      return '<span class="j-str">' + match + '</span>';
     })
     .replace(/\b(-?\d+\.?\d*([eE][+-]?\d+)?)\b/g, '<span class="j-num">$1</span>')
     .replace(/\b(true|false)\b/g, '<span class="j-bool">$1</span>')
-    .replace(/\bnull\b/g, '<span class="j-null">null</span>');
+    .replace(/\bnull\b/g, '<span style="color:var(--light3)">null</span>');
+}
+
+function exportSpec() {
+  if (!currentSpec) return;
+  const blob = new Blob([JSON.stringify(currentSpec, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "spec.json";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function showStaticCode() {
+  if (!currentSpec) return;
+  const panel = document.getElementById("jsonPanel");
+  const types = new Set();
+  for (const el of Object.values(currentSpec.elements)) types.add(el.type);
+  let code = '<span class="j-str">"use client"</span>;\n\n';
+  code += '<span class="j-key">import</span> { ' + [...types].join(', ') + ' } <span class="j-key">from</span> <span class="j-str">"@/components/ui"</span>;\n\n';
+  code += '<span class="j-key">export default function</span> GeneratedUI() {\n';
+  code += '  <span class="j-key">return</span> <span class="j-str">&lt;Render spec={spec} /&gt;</span>;\n';
+  code += '}';
+  panel.innerHTML = '<pre style="color:var(--light);font-size:12px;line-height:1.7">' + code + '</pre>';
 }
 
 function renderSpec(spec) {
@@ -672,13 +1345,14 @@ function renderSpec(spec) {
   area.innerHTML = "";
   const el = renderElement(spec, spec.root);
   if (el) area.appendChild(el);
+  document.getElementById("exportBtn").style.display = "inline";
 }
 
 function renderElement(spec, id) {
   const el = spec.elements[id];
   if (!el) return null;
   const node = document.createElement("div");
-  node.dataset.iiiId = id;
+  node.dataset.id = id;
 
   switch (el.type) {
     case "Card":
@@ -688,7 +1362,7 @@ function renderElement(spec, id) {
     case "Button": {
       const btn = document.createElement("button");
       btn.className = "iii-button";
-      btn.textContent = el.props.label ?? "Button";
+      btn.textContent = el.props.label || "Button";
       if (el.props.variant === "primary") btn.classList.add("iii-primary");
       if (el.props.variant === "secondary") btn.classList.add("iii-secondary");
       if (el.props.variant === "danger") btn.classList.add("iii-danger");
@@ -696,7 +1370,7 @@ function renderElement(spec, id) {
       break;
     }
     case "Input": {
-      if (el.props.label) { const l = document.createElement("label"); l.textContent = el.props.label; l.style.cssText = "display:block;font-size:12px;color:var(--text2);margin-bottom:4px"; node.appendChild(l); }
+      if (el.props.label) { const l = document.createElement("label"); l.textContent = el.props.label; l.style.cssText = "display:block;font-size:11px;color:var(--light3);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600"; node.appendChild(l); }
       const inp = document.createElement("input");
       inp.className = "iii-input";
       if (el.props.placeholder) inp.placeholder = el.props.placeholder;
@@ -705,18 +1379,18 @@ function renderElement(spec, id) {
       break;
     }
     case "Text": {
-      const p = document.createElement("p"); p.className = "iii-text"; p.textContent = el.props.content ?? el.props.text ?? ""; node.appendChild(p);
+      const p = document.createElement("p"); p.className = "iii-text"; p.textContent = el.props.content || el.props.text || ""; node.appendChild(p);
       break;
     }
     case "Link": {
-      const a = document.createElement("a"); a.className = "iii-link"; a.textContent = el.props.text ?? el.props.label ?? "Link"; a.href = el.props.href ?? "#"; node.appendChild(a);
+      const a = document.createElement("a"); a.className = "iii-link"; a.textContent = el.props.text || el.props.label || "Link"; a.href = el.props.href || "#"; node.appendChild(a);
       break;
     }
     case "Metric": {
       const m = document.createElement("div"); m.className = "iii-metric";
       if (el.props.label) { const l = document.createElement("span"); l.className = "iii-metric-label"; l.textContent = el.props.label; m.appendChild(l); }
-      const v = document.createElement("span"); v.className = "iii-metric-value"; v.textContent = el.props.value ?? ""; m.appendChild(v);
-      if (el.props.change) { const c = document.createElement("span"); c.style.cssText = `font-size:12px;color:${String(el.props.change).startsWith("+") || String(el.props.change).startsWith("\u2191") ? "var(--green)" : "var(--red)"}`; c.textContent = el.props.change; m.appendChild(c); }
+      const v = document.createElement("span"); v.className = "iii-metric-value"; v.textContent = el.props.value || ""; m.appendChild(v);
+      if (el.props.change) { const c = document.createElement("span"); c.style.cssText = "font-size:12px;font-weight:600;color:" + (String(el.props.change).startsWith("+") || String(el.props.change).startsWith("\u2191") ? "var(--green)" : "var(--red)"); c.textContent = el.props.change; m.appendChild(c); }
       node.appendChild(m);
       break;
     }
@@ -734,14 +1408,14 @@ function renderElement(spec, id) {
       break;
     }
     case "Image": {
-      const img = document.createElement("img"); img.className = "iii-image"; img.style.maxWidth = "100%";
+      const img = document.createElement("img"); img.style.maxWidth = "100%"; img.style.borderRadius = "var(--radius)";
       if (el.props.src) img.src = el.props.src; if (el.props.alt) img.alt = el.props.alt;
       node.appendChild(img);
       break;
     }
     default: {
       node.className = "iii-unknown";
-      const l = document.createElement("span"); l.textContent = `[${el.type}]`; l.className = "iii-type-label"; node.appendChild(l);
+      const l = document.createElement("span"); l.textContent = "[" + el.type + "]"; l.className = "iii-type-label"; node.appendChild(l);
       if (el.props && Object.keys(el.props).length) { const pre = document.createElement("pre"); pre.textContent = JSON.stringify(el.props, null, 2); node.appendChild(pre); }
     }
   }
@@ -773,7 +1447,7 @@ async function doStream() {
   if (!prompt) return;
 
   setLoading(true);
-  setBadge("streaming", "Streaming");
+  setBadge("streaming", "STREAMING");
 
   const jsonPanel = document.getElementById("jsonPanel");
   const previewPanel = document.getElementById("previewPanel");
@@ -803,40 +1477,20 @@ async function doStream() {
     processing = true;
     while (eventQueue.length > 0) {
       const { type, data } = eventQueue.shift();
-      if (type === "text") {
-        rawJson += data.text;
-        updateJsonPanel();
-      } else if (type === "root") {
-        partialSpec.root = data.root;
-        updatePreview();
-      } else if (type === "element") {
-        partialSpec.elements[data.id] = data.element;
-        updatePreview();
-        document.getElementById("previewMeta").textContent = `${Object.keys(partialSpec.elements).length} elements`;
-      } else if (type === "done") {
-        doneData = data;
-      } else if (type === "error") {
-        setBadge("done", "Error");
-        jsonPanel.innerHTML = `<span style="color:var(--red)">${data.error}</span>`;
-      }
+      if (type === "text") { rawJson += data.text; updateJsonPanel(); }
+      else if (type === "root") { partialSpec.root = data.root; updatePreview(); }
+      else if (type === "element") { partialSpec.elements[data.id] = data.element; updatePreview(); }
+      else if (type === "done") { doneData = data; }
+      else if (type === "error") { setBadge("done", "ERROR"); jsonPanel.innerHTML = '<span style="color:var(--red)">' + data.error + '</span>'; }
     }
 
     if (doneData) {
       currentSpec = doneData.spec;
       document.getElementById("refineBtn").disabled = false;
-
-      const pretty = JSON.stringify(doneData.spec, null, 2);
-      jsonPanel.innerHTML = syntaxHighlight(pretty);
-
+      jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(doneData.spec, null, 2));
       renderSpec(currentSpec);
-
       const n = Object.keys(doneData.spec.elements).length;
-      document.getElementById("previewMeta").textContent = `${n} elements`;
-      if (doneData.cached) {
-        setBadge("cached", `Cached (${n} elements)`);
-      } else {
-        setBadge("done", `${n} elements`);
-      }
+      setBadge(doneData.cached ? "cached" : "done", (doneData.cached ? "CACHED \u00b7 " : "") + n + " ELEMENTS");
       setLoading(false);
       doneData = null;
     }
@@ -844,7 +1498,7 @@ async function doStream() {
   }
 
   try {
-    const res = await fetch(`${BASE}/stream`, {
+    const res = await fetch(BASE + "/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt, catalog }),
@@ -860,25 +1514,20 @@ async function doStream() {
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
+      buffer = lines.pop() || "";
 
       for (const line of lines) {
-        if (line.startsWith("event: ")) {
-          currentEvent = line.slice(7).trim();
-        } else if (line.startsWith("data: ")) {
-          try {
-            const data = JSON.parse(line.slice(6));
-            eventQueue.push({ type: currentEvent, data });
-            processQueue();
-          } catch {}
+        if (line.startsWith("event: ")) currentEvent = line.slice(7).trim();
+        else if (line.startsWith("data: ")) {
+          try { eventQueue.push({ type: currentEvent, data: JSON.parse(line.slice(6)) }); processQueue(); } catch {}
         }
       }
     }
     await processQueue();
     if (!doneData && !currentSpec) setLoading(false);
   } catch (e) {
-    setBadge("done", "Error");
-    jsonPanel.innerHTML = `<span style="color:var(--red)">${e.message}</span>`;
+    setBadge("done", "ERROR");
+    jsonPanel.innerHTML = '<span style="color:var(--red)">' + e.message + '</span>';
     setLoading(false);
   }
 }
@@ -890,39 +1539,27 @@ async function doGenerate() {
   if (!prompt) return;
 
   setLoading(true);
-  setBadge("streaming", "Generating");
-
-  const jsonPanel = document.getElementById("jsonPanel");
-  jsonPanel.innerHTML = '<span style="color:var(--text2)">Generating...</span>';
+  setBadge("streaming", "GENERATING");
+  document.getElementById("jsonPanel").innerHTML = '<div class="json-placeholder">Generating...</div>';
 
   try {
-    const res = await fetch(`${BASE}/generate`, {
+    const res = await fetch(BASE + "/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt, catalog }),
     });
     const data = await res.json();
-    if (!res.ok) {
-      setBadge("done", "Error");
-      jsonPanel.innerHTML = `<span style="color:var(--red)">${data.error}</span>`;
-      return;
-    }
-
+    if (!res.ok) { setBadge("done", "ERROR"); document.getElementById("jsonPanel").innerHTML = '<span style="color:var(--red)">' + data.error + '</span>'; return; }
     currentSpec = data.spec;
-    const pretty = JSON.stringify(data.spec, null, 2);
-    jsonPanel.innerHTML = syntaxHighlight(pretty);
+    document.getElementById("jsonPanel").innerHTML = syntaxHighlight(JSON.stringify(data.spec, null, 2));
     renderSpec(currentSpec);
     document.getElementById("refineBtn").disabled = false;
-
     const n = Object.keys(data.spec.elements).length;
-    document.getElementById("previewMeta").textContent = `${n} elements | ${data.generation_ms}ms`;
-    setBadge(data.cached ? "cached" : "done", `${n} elements | ${data.generation_ms}ms${data.cached ? " | cached" : ""}`);
+    setBadge(data.cached ? "cached" : "done", n + " ELEMENTS \u00b7 " + data.generation_ms + "MS" + (data.cached ? " \u00b7 CACHED" : ""));
   } catch (e) {
-    setBadge("done", "Error");
-    jsonPanel.innerHTML = `<span style="color:var(--red)">${e.message}</span>`;
-  } finally {
-    setLoading(false);
-  }
+    setBadge("done", "ERROR");
+    document.getElementById("jsonPanel").innerHTML = '<span style="color:var(--red)">' + e.message + '</span>';
+  } finally { setLoading(false); }
 }
 
 async function doRefine() {
@@ -933,47 +1570,35 @@ async function doRefine() {
   if (!prompt) return;
 
   setLoading(true);
-  setBadge("streaming", "Refining");
+  setBadge("streaming", "REFINING");
 
   try {
-    const res = await fetch(`${BASE}/refine`, {
+    const res = await fetch(BASE + "/refine", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt, current_spec: currentSpec, catalog }),
     });
     const data = await res.json();
-    if (!res.ok) {
-      setBadge("done", "Error");
-      document.getElementById("jsonPanel").innerHTML = `<span style="color:var(--red)">${data.error}</span>`;
-      return;
-    }
-
+    if (!res.ok) { setBadge("done", "ERROR"); document.getElementById("jsonPanel").innerHTML = '<span style="color:var(--red)">' + data.error + '</span>'; return; }
     currentSpec = data.spec;
-    const pretty = JSON.stringify(data.spec, null, 2);
-    document.getElementById("jsonPanel").innerHTML = syntaxHighlight(pretty);
+    document.getElementById("jsonPanel").innerHTML = syntaxHighlight(JSON.stringify(data.spec, null, 2));
     renderSpec(currentSpec);
-
-    const n = Object.keys(data.spec.elements).length;
-    document.getElementById("previewMeta").textContent = `${n} elements | ${data.patch_count} patches | ${data.generation_ms}ms`;
-    setBadge("done", `${data.patch_count} patches | ${data.generation_ms}ms`);
+    setBadge("done", data.patch_count + " PATCHES \u00b7 " + data.generation_ms + "MS");
     document.getElementById("refinePrompt").value = "";
-  } catch (e) {
-    setBadge("done", "Error");
-  } finally {
-    setLoading(false);
-  }
+  } catch (e) { setBadge("done", "ERROR"); }
+  finally { setLoading(false); }
 }
 
 async function checkHealth() {
   try {
-    const res = await fetch(`${BASE}/health`);
+    const res = await fetch(BASE + "/health");
     const dot = document.getElementById("statusDot");
     const txt = document.getElementById("statusText");
-    if (res.ok) { dot.classList.add("connected"); txt.textContent = "Connected"; }
-    else { dot.classList.remove("connected"); txt.textContent = "Disconnected"; }
+    if (res.ok) { dot.classList.add("connected"); txt.textContent = "connected"; }
+    else { dot.classList.remove("connected"); txt.textContent = "disconnected"; }
   } catch {
     document.getElementById("statusDot").classList.remove("connected");
-    document.getElementById("statusText").textContent = "Disconnected";
+    document.getElementById("statusText").textContent = "disconnected";
   }
 }
 
