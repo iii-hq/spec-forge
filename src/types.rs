@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct GenerateRequest {
+    #[serde(default)]
     pub prompt: String,
+    #[serde(default)]
     pub catalog: Catalog,
     #[serde(default = "default_model")]
     pub model: String,
@@ -12,18 +14,20 @@ pub struct GenerateRequest {
 }
 
 pub fn default_model() -> String {
-    "claude-opus-4-6".into()
+    "claude-sonnet-4-6".into()
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Catalog {
+    #[serde(default)]
     pub components: BTreeMap<String, ComponentDef>,
     #[serde(default)]
     pub actions: BTreeMap<String, ActionDef>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct ComponentDef {
+    #[serde(default)]
     pub description: String,
     #[serde(default)]
     pub props: serde_json::Value,
@@ -31,37 +35,26 @@ pub struct ComponentDef {
     pub children: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct ActionDef {
+    #[serde(default)]
     pub description: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct UISpec {
+    #[serde(default)]
     pub root: String,
+    #[serde(default)]
     pub elements: HashMap<String, UIElement>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct UIElement {
-    #[serde(rename = "type")]
+    #[serde(rename = "type", default)]
     pub element_type: String,
+    #[serde(default)]
     pub props: serde_json::Value,
     #[serde(default)]
     pub children: Vec<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GenerateResponse {
-    pub spec: UISpec,
-    pub cached: bool,
-    pub generation_ms: u64,
-    pub model: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ErrorResponse {
-    pub error: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub details: Option<Vec<String>>,
 }

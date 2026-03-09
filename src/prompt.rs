@@ -1,11 +1,20 @@
 use crate::types::Catalog;
 
 pub fn build_prompt(user_prompt: &str, catalog: &Catalog) -> String {
-    let mut prompt = String::with_capacity(4096);
+    let mut prompt = String::with_capacity(8192);
 
-    prompt.push_str(
-        "You are a UI generator. Generate a JSON spec using ONLY these components:\n\n",
-    );
+    prompt.push_str(r#"You are an expert UI architect. Generate a structured JSON UI spec using ONLY the provided components.
+
+## Design Principles
+- Use semantic hierarchy: wrap related elements in container components (Card, Stack, Grid)
+- Keep the element tree shallow — prefer 2-3 levels of nesting max
+- Use meaningful, short element IDs like "header", "form-card", "submit-btn"
+- Prefer layout components (Stack, Grid) to organize groups of elements
+- Every form should have labeled inputs, clear grouping, and a primary action button
+- Use props exactly as defined — do not invent props that don't exist
+- Text content should be realistic and specific, not placeholder lorem ipsum
+
+"#);
 
     prompt.push_str("## Available Components\n\n");
     for (name, def) in &catalog.components {
@@ -34,7 +43,7 @@ pub fn build_prompt(user_prompt: &str, catalog: &Catalog) -> String {
     prompt.push_str(
         r#"## Output Format
 
-Return ONLY valid JSON in this exact format:
+Return ONLY valid JSON (no markdown, no backticks, no explanation) in this exact format:
 {
   "root": "<root-element-id>",
   "elements": {
@@ -46,12 +55,15 @@ Return ONLY valid JSON in this exact format:
   }
 }
 
-Rules:
-- Use ONLY components listed above
-- Every element ID must be unique (format: lowercase-type-number, e.g. "card-1")
-- Props must match the component's props schema exactly
-- Children array contains element IDs, not inline elements
+## Rules
+- Use ONLY components listed above — never invent new component types
+- Every element ID must be unique, short, and descriptive (e.g. "main-card", "email-input", "submit-btn")
+- Props must match the component's defined props exactly — no extra props
+- Children array contains element IDs (strings), not inline objects
 - Root must reference an existing element ID
+- Leaf elements must have "children": []
+- Use containers (Card, Stack, Grid) to group related elements logically
+- Generate 5-12 elements for a complete, well-structured UI
 "#,
     );
 
@@ -119,5 +131,16 @@ mod tests {
         };
         let result = build_prompt("test", &catalog);
         assert!(!result.contains("Available Actions"));
+    }
+
+    #[test]
+    fn prompt_includes_design_principles() {
+        let catalog = Catalog {
+            components: BTreeMap::new(),
+            actions: BTreeMap::new(),
+        };
+        let result = build_prompt("test", &catalog);
+        assert!(result.contains("Design Principles"));
+        assert!(result.contains("semantic hierarchy"));
     }
 }

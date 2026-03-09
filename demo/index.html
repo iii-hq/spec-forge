@@ -823,7 +823,17 @@
   .iii-button button.iii-secondary { background: var(--dark3); color: var(--light); }
   .iii-button button.iii-danger { background: var(--red); color: white; border-color: var(--red); }
 
-  .iii-input input {
+  .iii-label {
+    display: block;
+    font-size: 11px;
+    color: var(--light3);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+  }
+
+  .iii-input input, .iii-input textarea, .iii-input select {
     width: 100%;
     padding: 10px 12px;
     background: var(--black);
@@ -835,7 +845,34 @@
     outline: none;
   }
 
-  .iii-input input:focus { border-color: var(--accent); }
+  .iii-textarea { resize: vertical; min-height: 60px; }
+  .iii-select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23999' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+
+  .iii-input input:focus, .iii-input textarea:focus, .iii-input select:focus { border-color: var(--accent); }
+
+  .iii-checkbox-wrap, .iii-radio-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--light2);
+    cursor: pointer;
+  }
+
+  .iii-checkbox, .iii-radio {
+    accent-color: var(--accent);
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+  }
+
+  .iii-radio-group { display: flex; flex-direction: column; gap: 8px; }
+
+  .iii-heading { color: var(--light); letter-spacing: -0.02em; }
+  .iii-h1 { font-size: 24px; font-weight: 800; }
+  .iii-h2 { font-size: 18px; font-weight: 700; }
+  .iii-h3 { font-size: 15px; font-weight: 700; }
+  .iii-h4 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--light3); }
 
   .iii-text p { color: var(--light2); line-height: 1.6; font-size: 13px; }
 
@@ -1099,8 +1136,8 @@
       <div class="pg-panel">
         <div class="pg-panel-head">
           <div class="pg-tabs">
-            <button class="pg-tab active" data-tab="json">JSON</button>
-            <button class="pg-tab" data-tab="stream">STREAM</button>
+            <button class="pg-tab active" onclick="switchLeftTab('json', this)">JSON</button>
+            <button class="pg-tab" onclick="switchLeftTab('stream', this)">STREAM</button>
             <button class="pg-tab" onclick="toggleDrawer()">CATALOG</button>
           </div>
           <span class="pg-badge" id="jsonBadge"></span>
@@ -1111,14 +1148,15 @@
               Type a prompt and press <kbd>Enter</kbd> to see JSON stream live
             </div>
           </div>
+          <div class="json-view" id="streamLog" style="display:none;font-size:11px;color:var(--light2)"></div>
         </div>
       </div>
 
       <div class="pg-panel">
         <div class="pg-panel-head">
           <div class="pg-tabs">
-            <button class="pg-tab active">LIVE RENDER</button>
-            <button class="pg-tab" onclick="showStaticCode()">STATIC CODE</button>
+            <button class="pg-tab active" onclick="switchRightTab('render', this)">LIVE RENDER</button>
+            <button class="pg-tab" onclick="switchRightTab('code', this)">STATIC CODE</button>
           </div>
           <button class="pg-export" id="exportBtn" onclick="exportSpec()" style="display:none">EXPORT {}</button>
         </div>
@@ -1128,6 +1166,7 @@
               <span>Rendered UI will appear here</span>
             </div>
           </div>
+          <div class="json-view" id="codePanel" style="display:none;font-size:12px;line-height:1.7"></div>
         </div>
       </div>
     </div>
@@ -1216,56 +1255,118 @@
 </div>
 
 <script>
-const BASE = window.location.origin;
+const ENGINE = "http://" + (window.location.hostname || "localhost") + ":3111";
 let currentSpec = null;
 
 const PRESETS = {
   dashboard: {
     components: {
-      Card: { description: "Container card with optional title", props: { title: "string" }, children: true },
-      Metric: { description: "Displays a key metric", props: { label: "string", value: "string", change: "string" } },
-      Table: { description: "Data table", props: { columns: "string[]", rows: "array" } },
+      Stack: { description: "Vertical or horizontal flex container", props: { direction: "vertical|horizontal", gap: "number", align: "start|center|end|stretch" }, children: true },
+      Card: { description: "Container card with optional title and subtitle", props: { title: "string", subtitle: "string" }, children: true },
+      Grid: { description: "CSS grid layout container", props: { columns: "number", gap: "number" }, children: true },
+      Heading: { description: "Section heading text", props: { text: "string", level: "1|2|3|4" } },
+      Metric: { description: "Displays a key metric with label, value, and optional change indicator", props: { label: "string", value: "string", change: "string" } },
+      Table: { description: "Data table with columns and rows", props: { columns: "string[]", rows: "array" } },
       Button: { description: "Clickable button", props: { label: "string", variant: "primary|secondary|danger" } },
-      Text: { description: "Text paragraph", props: { content: "string" } },
-      Input: { description: "Text input field", props: { placeholder: "string", type: "string" } },
-      Link: { description: "Hyperlink", props: { text: "string", href: "string" } },
+      Text: { description: "Text paragraph", props: { content: "string", size: "sm|md|lg", muted: "boolean" } },
+      Badge: { description: "Small status badge/tag", props: { text: "string", color: "green|red|yellow|blue|gray" } },
+      Divider: { description: "Horizontal line separator", props: {} },
+      Input: { description: "Text input field", props: { placeholder: "string", type: "text|email|number", label: "string" } },
     },
     actions: { navigate: { description: "Navigate to a page" }, refresh: { description: "Refresh data" } },
   },
   form: {
     components: {
-      Card: { description: "Container card", props: { title: "string" }, children: true },
-      Input: { description: "Text input", props: { placeholder: "string", type: "text|email|password|number", label: "string" } },
-      Button: { description: "Button", props: { label: "string", variant: "primary|secondary" } },
-      Text: { description: "Text/label", props: { content: "string" } },
-      Link: { description: "Hyperlink", props: { text: "string", href: "string" } },
+      Stack: { description: "Vertical or horizontal flex container for layout", props: { direction: "vertical|horizontal", gap: "number", align: "start|center|end|stretch" }, children: true },
+      Card: { description: "Container card with optional title", props: { title: "string" }, children: true },
+      Heading: { description: "Section heading text", props: { text: "string", level: "1|2|3|4" } },
+      Input: { description: "Text input field with label", props: { placeholder: "string", type: "text|email|password|number|tel", label: "string" } },
+      Textarea: { description: "Multi-line text input", props: { placeholder: "string", label: "string", rows: "number" } },
+      Select: { description: "Dropdown select field", props: { label: "string", options: "string[]", placeholder: "string" } },
+      Checkbox: { description: "Checkbox with label", props: { label: "string", checked: "boolean" } },
+      Radio: { description: "Radio button group", props: { label: "string", options: "string[]", name: "string" } },
+      Button: { description: "Button", props: { label: "string", variant: "primary|secondary|danger" } },
+      Text: { description: "Text paragraph or label", props: { content: "string", size: "sm|md|lg", muted: "boolean" } },
+      Divider: { description: "Horizontal line separator", props: {} },
+      Badge: { description: "Small status indicator", props: { text: "string", color: "green|red|yellow|blue|gray" } },
     },
     actions: { submit: { description: "Submit form" }, reset: { description: "Reset form" } },
   },
   ecommerce: {
     components: {
-      Card: { description: "Product or content card", props: { title: "string" }, children: true },
+      Stack: { description: "Vertical or horizontal flex container", props: { direction: "vertical|horizontal", gap: "number", align: "start|center|end|stretch" }, children: true },
+      Grid: { description: "CSS grid layout", props: { columns: "number", gap: "number" }, children: true },
+      Card: { description: "Product or content card", props: { title: "string", subtitle: "string" }, children: true },
+      Heading: { description: "Section heading", props: { text: "string", level: "1|2|3|4" } },
       Image: { description: "Product image", props: { src: "string", alt: "string" } },
-      Text: { description: "Text content", props: { content: "string" } },
+      Text: { description: "Text content", props: { content: "string", size: "sm|md|lg", muted: "boolean" } },
       Button: { description: "Action button", props: { label: "string", variant: "primary|secondary|danger" } },
-      Metric: { description: "Price or stat display", props: { label: "string", value: "string" } },
+      Metric: { description: "Price or stat display", props: { label: "string", value: "string", change: "string" } },
+      Badge: { description: "Status badge/tag", props: { text: "string", color: "green|red|yellow|blue|gray" } },
+      Divider: { description: "Horizontal separator", props: {} },
       List: { description: "Item list", props: { items: "array" }, children: true },
     },
     actions: { addToCart: { description: "Add item to cart" }, checkout: { description: "Proceed to checkout" } },
   },
   minimal: {
     components: {
-      Card: { description: "Container", children: true },
+      Stack: { description: "Flex container for layout", props: { direction: "vertical|horizontal", gap: "number" }, children: true },
+      Card: { description: "Container", props: { title: "string" }, children: true },
+      Heading: { description: "Heading text", props: { text: "string", level: "1|2|3|4" } },
       Text: { description: "Text", props: { content: "string" } },
-      Button: { description: "Button", props: { label: "string" } },
+      Button: { description: "Button", props: { label: "string", variant: "primary|secondary" } },
     },
     actions: {},
   },
 };
 
+let leftTab = "json";
+let rightTab = "render";
+let streamLogEntries = [];
+
 function setPrompt(text) {
   document.getElementById("prompt").value = text;
   document.getElementById("prompt").focus();
+}
+
+function switchLeftTab(tab, el) {
+  leftTab = tab;
+  el.parentElement.querySelectorAll(".pg-tab").forEach(t => t.classList.remove("active"));
+  el.classList.add("active");
+  document.getElementById("jsonPanel").style.display = tab === "json" ? "block" : "none";
+  document.getElementById("streamLog").style.display = tab === "stream" ? "block" : "none";
+}
+
+function switchRightTab(tab, el) {
+  rightTab = tab;
+  el.parentElement.querySelectorAll(".pg-tab").forEach(t => t.classList.remove("active"));
+  el.classList.add("active");
+  document.getElementById("previewPanel").style.display = tab === "render" ? "block" : "none";
+  document.getElementById("codePanel").style.display = tab === "code" ? "block" : "none";
+  if (tab === "code") updateCodePanel();
+}
+
+function updateCodePanel() {
+  const panel = document.getElementById("codePanel");
+  if (!currentSpec) { panel.innerHTML = '<span style="color:var(--light3)">Generate a spec first</span>'; return; }
+  const types = new Set();
+  for (const el of Object.values(currentSpec.elements)) types.add(el.type);
+  let code = '<span class="j-str">"use client"</span>;\n\n';
+  code += '<span class="j-key">import</span> { ' + [...types].join(', ') + ' } <span class="j-key">from</span> <span class="j-str">"@/components/ui"</span>;\n';
+  code += '<span class="j-key">import</span> { Render } <span class="j-key">from</span> <span class="j-str">"@anthropic-ai/json-render-react"</span>;\n\n';
+  code += '<span class="j-key">const</span> spec = ' + syntaxHighlight(JSON.stringify(currentSpec, null, 2)) + ';\n\n';
+  code += '<span class="j-key">export default function</span> GeneratedUI() {\n';
+  code += '  <span class="j-key">return</span> &lt;Render spec={spec} catalog={catalog} /&gt;;\n';
+  code += '}';
+  panel.innerHTML = code;
+}
+
+function addStreamLog(type, data) {
+  const entry = '<span style="color:var(--accent)">[' + type.toUpperCase() + ']</span> ' + JSON.stringify(data).substring(0, 120);
+  streamLogEntries.push(entry);
+  const log = document.getElementById("streamLog");
+  log.innerHTML = streamLogEntries.join('\n');
+  log.scrollTop = log.scrollHeight;
 }
 
 function getCatalog() {
@@ -1327,18 +1428,6 @@ function exportSpec() {
   URL.revokeObjectURL(url);
 }
 
-function showStaticCode() {
-  if (!currentSpec) return;
-  const panel = document.getElementById("jsonPanel");
-  const types = new Set();
-  for (const el of Object.values(currentSpec.elements)) types.add(el.type);
-  let code = '<span class="j-str">"use client"</span>;\n\n';
-  code += '<span class="j-key">import</span> { ' + [...types].join(', ') + ' } <span class="j-key">from</span> <span class="j-str">"@/components/ui"</span>;\n\n';
-  code += '<span class="j-key">export default function</span> GeneratedUI() {\n';
-  code += '  <span class="j-key">return</span> <span class="j-str">&lt;Render spec={spec} /&gt;</span>;\n';
-  code += '}';
-  panel.innerHTML = '<pre style="color:var(--light);font-size:12px;line-height:1.7">' + code + '</pre>';
-}
 
 function renderSpec(spec) {
   const area = document.getElementById("previewPanel");
@@ -1355,10 +1444,32 @@ function renderElement(spec, id) {
   node.dataset.id = id;
 
   switch (el.type) {
+    case "Stack": {
+      const dir = el.props.direction === "horizontal" ? "row" : "column";
+      const gap = (el.props.gap || 12) + "px";
+      const align = el.props.align || "stretch";
+      node.style.cssText = "display:flex;flex-direction:" + dir + ";gap:" + gap + ";align-items:" + align;
+      break;
+    }
+    case "Grid": {
+      const cols = el.props.columns || 2;
+      const gap = (el.props.gap || 16) + "px";
+      node.style.cssText = "display:grid;grid-template-columns:repeat(" + cols + ",1fr);gap:" + gap;
+      break;
+    }
     case "Card":
       node.className = "iii-card";
       if (el.props.title) { const h = document.createElement("h3"); h.textContent = el.props.title; node.appendChild(h); }
+      if (el.props.subtitle) { const s = document.createElement("p"); s.style.cssText = "font-size:12px;color:var(--light3);margin-top:2px"; s.textContent = el.props.subtitle; node.appendChild(s); }
       break;
+    case "Heading": {
+      const lvl = Math.min(Math.max(parseInt(el.props.level) || 2, 1), 4);
+      const h = document.createElement("h" + lvl);
+      h.className = "iii-heading iii-h" + lvl;
+      h.textContent = el.props.text || "";
+      node.appendChild(h);
+      break;
+    }
     case "Button": {
       const btn = document.createElement("button");
       btn.className = "iii-button";
@@ -1370,7 +1481,7 @@ function renderElement(spec, id) {
       break;
     }
     case "Input": {
-      if (el.props.label) { const l = document.createElement("label"); l.textContent = el.props.label; l.style.cssText = "display:block;font-size:11px;color:var(--light3);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600"; node.appendChild(l); }
+      if (el.props.label) { const l = document.createElement("label"); l.className = "iii-label"; l.textContent = el.props.label; node.appendChild(l); }
       const inp = document.createElement("input");
       inp.className = "iii-input";
       if (el.props.placeholder) inp.placeholder = el.props.placeholder;
@@ -1378,8 +1489,67 @@ function renderElement(spec, id) {
       node.appendChild(inp);
       break;
     }
+    case "Textarea": {
+      if (el.props.label) { const l = document.createElement("label"); l.className = "iii-label"; l.textContent = el.props.label; node.appendChild(l); }
+      const ta = document.createElement("textarea");
+      ta.className = "iii-input iii-textarea";
+      ta.rows = el.props.rows || 4;
+      if (el.props.placeholder) ta.placeholder = el.props.placeholder;
+      node.appendChild(ta);
+      break;
+    }
+    case "Select": {
+      if (el.props.label) { const l = document.createElement("label"); l.className = "iii-label"; l.textContent = el.props.label; node.appendChild(l); }
+      const sel = document.createElement("select");
+      sel.className = "iii-input iii-select";
+      if (el.props.placeholder) { const o = document.createElement("option"); o.textContent = el.props.placeholder; o.value = ""; o.disabled = true; o.selected = true; sel.appendChild(o); }
+      if (Array.isArray(el.props.options)) { for (const opt of el.props.options) { const o = document.createElement("option"); o.textContent = opt; o.value = opt; sel.appendChild(o); } }
+      node.appendChild(sel);
+      break;
+    }
+    case "Checkbox": {
+      const wrap = document.createElement("label"); wrap.className = "iii-checkbox-wrap";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.className = "iii-checkbox"; if (el.props.checked) cb.checked = true;
+      const span = document.createElement("span"); span.textContent = el.props.label || "";
+      wrap.appendChild(cb); wrap.appendChild(span);
+      node.appendChild(wrap);
+      break;
+    }
+    case "Radio": {
+      if (el.props.label) { const l = document.createElement("label"); l.className = "iii-label"; l.textContent = el.props.label; node.appendChild(l); }
+      const group = document.createElement("div"); group.className = "iii-radio-group";
+      const name = el.props.name || id;
+      if (Array.isArray(el.props.options)) { for (const opt of el.props.options) {
+        const wrap = document.createElement("label"); wrap.className = "iii-radio-wrap";
+        const rb = document.createElement("input"); rb.type = "radio"; rb.name = name; rb.className = "iii-radio";
+        const span = document.createElement("span"); span.textContent = opt;
+        wrap.appendChild(rb); wrap.appendChild(span); group.appendChild(wrap);
+      }}
+      node.appendChild(group);
+      break;
+    }
     case "Text": {
-      const p = document.createElement("p"); p.className = "iii-text"; p.textContent = el.props.content || el.props.text || ""; node.appendChild(p);
+      const p = document.createElement("p"); p.className = "iii-text";
+      if (el.props.size === "sm") p.style.fontSize = "12px";
+      if (el.props.size === "lg") p.style.fontSize = "16px";
+      if (el.props.muted) p.style.color = "var(--light3)";
+      p.textContent = el.props.content || el.props.text || "";
+      node.appendChild(p);
+      break;
+    }
+    case "Badge": {
+      const b = document.createElement("span"); b.className = "iii-badge";
+      const colors = { green: "#44FF88", red: "#FF4444", yellow: "#F3F724", blue: "#5865F2", gray: "#666" };
+      const c = colors[el.props.color] || colors.gray;
+      b.style.cssText = "display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:" + c + "22;color:" + c + ";border:1px solid " + c + "44";
+      b.textContent = el.props.text || "";
+      node.appendChild(b);
+      break;
+    }
+    case "Divider": {
+      const hr = document.createElement("hr"); hr.className = "iii-divider";
+      hr.style.cssText = "border:none;border-top:1px solid var(--medium);margin:8px 0";
+      node.appendChild(hr);
       break;
     }
     case "Link": {
@@ -1447,87 +1617,63 @@ async function doStream() {
   if (!prompt) return;
 
   setLoading(true);
-  setBadge("streaming", "STREAMING");
+  setBadge("streaming", "GENERATING");
 
   const jsonPanel = document.getElementById("jsonPanel");
   const previewPanel = document.getElementById("previewPanel");
-  jsonPanel.innerHTML = "";
+  jsonPanel.innerHTML = '<div class="json-placeholder">Calling Claude via iii engine...</div>';
   previewPanel.innerHTML = '<div class="preview-empty"><span>Waiting for Claude...</span></div>';
-
-  let rawJson = "";
-  const partialSpec = { root: "", elements: {} };
-  const eventQueue = [];
-  let processing = false;
-  let doneData = null;
-
-  function updateJsonPanel() {
-    jsonPanel.innerHTML = syntaxHighlight(rawJson) + '<span class="cursor"></span>';
-    jsonPanel.scrollTop = jsonPanel.scrollHeight;
-  }
-
-  function updatePreview() {
-    if (!partialSpec.root) return;
-    previewPanel.innerHTML = "";
-    const el = renderStreamElement(partialSpec, partialSpec.root);
-    if (el) previewPanel.appendChild(el);
-  }
-
-  async function processQueue() {
-    if (processing) return;
-    processing = true;
-    while (eventQueue.length > 0) {
-      const { type, data } = eventQueue.shift();
-      if (type === "text") { rawJson += data.text; updateJsonPanel(); }
-      else if (type === "root") { partialSpec.root = data.root; updatePreview(); }
-      else if (type === "element") { partialSpec.elements[data.id] = data.element; updatePreview(); }
-      else if (type === "done") { doneData = data; }
-      else if (type === "error") { setBadge("done", "ERROR"); jsonPanel.innerHTML = '<span style="color:var(--red)">' + data.error + '</span>'; }
-    }
-
-    if (doneData) {
-      currentSpec = doneData.spec;
-      document.getElementById("refineBtn").disabled = false;
-      jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(doneData.spec, null, 2));
-      renderSpec(currentSpec);
-      const n = Object.keys(doneData.spec.elements).length;
-      setBadge(doneData.cached ? "cached" : "done", (doneData.cached ? "CACHED \u00b7 " : "") + n + " ELEMENTS");
-      setLoading(false);
-      doneData = null;
-    }
-    processing = false;
-  }
+  streamLogEntries = [];
+  document.getElementById("streamLog").innerHTML = "";
 
   try {
-    const res = await fetch(BASE + "/stream", {
+    addStreamLog("text", { text: "calling spec-forge/generate via iii..." });
+    const res = await fetch(ENGINE + "/spec-forge/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt, catalog }),
     });
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let currentEvent = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (line.startsWith("event: ")) currentEvent = line.slice(7).trim();
-        else if (line.startsWith("data: ")) {
-          try { eventQueue.push({ type: currentEvent, data: JSON.parse(line.slice(6)) }); processQueue(); } catch {}
-        }
-      }
+    const data = await res.json();
+    if (!res.ok) {
+      addStreamLog("error", { error: data.error || "Request failed" });
+      setBadge("done", "ERROR");
+      jsonPanel.innerHTML = '<span style="color:var(--red)">' + (data.error || "Error") + '</span>';
+      setLoading(false);
+      return;
     }
-    await processQueue();
-    if (!doneData && !currentSpec) setLoading(false);
+
+    addStreamLog("root", { root: data.spec.root });
+    const ids = Object.keys(data.spec.elements);
+    const partialSpec = { root: data.spec.root, elements: {} };
+
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      partialSpec.elements[id] = data.spec.elements[id];
+      addStreamLog("element", { id, element: data.spec.elements[id] });
+
+      const rawJson = JSON.stringify(partialSpec, null, 2);
+      jsonPanel.innerHTML = syntaxHighlight(rawJson) + '<span class="cursor"></span>';
+      jsonPanel.scrollTop = jsonPanel.scrollHeight;
+
+      previewPanel.innerHTML = "";
+      const el = renderStreamElement(partialSpec, partialSpec.root);
+      if (el) previewPanel.appendChild(el);
+
+      if (ids.length > 1) await new Promise(r => setTimeout(r, 80));
+    }
+
+    addStreamLog("done", { done: true, cached: data.cached });
+    currentSpec = data.spec;
+    document.getElementById("refineBtn").disabled = false;
+    jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(data.spec, null, 2));
+    renderSpec(currentSpec);
+    const n = ids.length;
+    setBadge(data.cached ? "cached" : "done", (data.cached ? "CACHED · " : "") + n + " ELEMENTS · " + data.generation_ms + "MS");
   } catch (e) {
+    addStreamLog("error", { error: e.message });
     setBadge("done", "ERROR");
     jsonPanel.innerHTML = '<span style="color:var(--red)">' + e.message + '</span>';
+  } finally {
     setLoading(false);
   }
 }
@@ -1543,7 +1689,7 @@ async function doGenerate() {
   document.getElementById("jsonPanel").innerHTML = '<div class="json-placeholder">Generating...</div>';
 
   try {
-    const res = await fetch(BASE + "/generate", {
+    const res = await fetch(ENGINE + "/spec-forge/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt, catalog }),
@@ -1573,7 +1719,7 @@ async function doRefine() {
   setBadge("streaming", "REFINING");
 
   try {
-    const res = await fetch(BASE + "/refine", {
+    const res = await fetch(ENGINE + "/spec-forge/refine", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt, current_spec: currentSpec, catalog }),
@@ -1591,7 +1737,7 @@ async function doRefine() {
 
 async function checkHealth() {
   try {
-    const res = await fetch(BASE + "/health");
+    const res = await fetch(ENGINE + "/spec-forge/health");
     const dot = document.getElementById("statusDot");
     const txt = document.getElementById("statusText");
     if (res.ok) { dot.classList.add("connected"); txt.textContent = "connected"; }

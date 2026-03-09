@@ -1,66 +1,81 @@
 # spec-forge
 
-Rust generation server for [json-render](https://github.com/vercel-labs/json-render) — adds caching, streaming, rate limiting, and spec diffing.
+Pure iii-sdk worker for [json-render](https://github.com/anthropics/json-render) UI generation — caching, rate limiting, spec diffing, and validation. No standalone HTTP server; all endpoints are iii functions with HTTP triggers served by the iii engine.
 
 ```
-Browser → spec-forge (Rust) → Claude API
-              ↓
-        JSON UI spec
-              ↓
-Browser → json-render renderer (React/Vue/Svelte) → DOM
+Browser  ──>  iii-engine (HTTP triggers)  ──>  spec-forge worker (Rust)  ──>  Claude API
+                      ↓
+                JSON UI spec
+                      ↓
+Browser  ──>  json-render renderer (React/Vue/Svelte)  ──>  DOM
 ```
 
 ## Why
 
 json-render calls the LLM on every request. No caching, no diffing, no rate limiting. API key exposed to client.
 
-spec-forge sits between the browser and Claude API as a production layer:
+spec-forge is a pure iii-sdk worker that registers functions and HTTP triggers — the iii engine handles HTTP serving, CORS, retry, observability, and state management.
 
-| | json-render | spec-forge |
+| | json-render | spec-forge + iii |
 |---|---|---|
+| Architecture | Client-side LLM calls | iii worker with HTTP triggers |
 | Cache | None | SHA-256 exact + TF-IDF semantic |
-| Repeat request | 3-5s LLM call | **0ms** |
+| Repeat request | 3-5s LLM call | **0ms** cached |
 | UI update | Full regeneration | Patch-based (Add/Replace/Remove) |
-| Streaming | Basic | Incremental parser, live JSON + element SSE |
 | Rate limiting | None | Token bucket + concurrency semaphore |
 | API key | Client-side | Server-side only |
+| Observability | None | OpenTelemetry (built-in via iii) |
+| Streaming metrics | None | iii Streams (atomic KV counters) |
 
 ## Quick Start
 
+**Prerequisites:** [iii engine](https://github.com/iii-hq/engine) installed and available as `iii` CLI.
+
 ```bash
+# 1. Set API key
 export ANTHROPIC_API_KEY=sk-ant-...
-cargo run --release
+
+# 2. Start iii engine
+iii --config iii-config.yaml &
+
+# 3. Build and run the worker
+cargo build --release
+./target/release/spec-forge &
+
+# 4. Serve demo UI
+cd demo && python3 -m http.server 3112 &
 ```
 
-Open `http://localhost:3112` for the interactive demo.
+Open `http://localhost:3112` for the interactive playground.
 
 ## Endpoints
 
-| Route | Description |
-|-------|-------------|
-| `GET /` | Interactive demo UI with live JSON streaming |
-| `POST /generate` | Generate spec (exact cache → semantic cache → rate limit → Claude → validate) |
-| `POST /stream` | SSE streaming with live JSON text + element-by-element emission |
-| `POST /refine` | Patch-based update — sends only changes, not full regeneration |
-| `POST /validate` | Validate a spec against a component catalog |
-| `GET /stats` | Rate limiter + cache statistics |
-| `POST /prompt` | Preview the LLM prompt that would be sent |
-| `GET /health` | Liveness check |
+All endpoints are iii functions with HTTP triggers, served by the engine on port 3111:
+
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/spec-forge/generate` | POST | Generate spec (exact cache -> semantic cache -> rate limit -> Claude -> validate) |
+| `/spec-forge/refine` | POST | Patch-based update (Add/Replace/Remove ops) |
+| `/spec-forge/validate` | POST | Validate spec against component catalog |
+| `/spec-forge/prompt` | POST | Preview the LLM prompt that would be sent |
+| `/spec-forge/stats` | GET | Rate limiter, cache, and stream metrics |
+| `/spec-forge/health` | GET | Liveness check |
 
 ## Usage
 
 ### Generate
 
 ```bash
-curl -X POST http://localhost:3112/generate \
+curl -X POST http://localhost:3111/spec-forge/generate \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "A login form with email and password",
     "catalog": {
       "components": {
-        "Card": {"description": "Container card", "children": true},
-        "Input": {"description": "Text input", "props": {"placeholder": "string", "type": "string"}},
-        "Button": {"description": "Button", "props": {"label": "string", "variant": "string"}}
+        "Stack": {"description": "Flex container", "props": {"direction": "vertical|horizontal", "gap": "number"}, "children": true},
+        "Card": {"description": "Container card", "props": {"title": "string"}, "children": true},
+        "Input": {"description": "Text input", "props": {"placeholder": "string", "type": "string", "label": "string"}},
+        "Button": {"description": "Button", "props": {"label": "string", "variant": "primary|secondary"}}
       },
       "actions": {"submit": {"description": "Submit form"}}
     }
@@ -71,56 +86,34 @@ Response:
 ```json
 {
   "spec": {
-    "root": "card-1",
+    "root": "form-card",
     "elements": {
-      "card-1": {"type": "Card", "props": {}, "children": ["input-1", "input-2", "button-1"]},
-      "input-1": {"type": "Input", "props": {"placeholder": "Email", "type": "email"}, "children": []},
-      "input-2": {"type": "Input", "props": {"placeholder": "Password", "type": "password"}, "children": []},
-      "button-1": {"type": "Button", "props": {"label": "Login", "variant": "primary"}, "children": []}
+      "form-card": {"type": "Card", "props": {"title": "Login"}, "children": ["form-stack"]},
+      "form-stack": {"type": "Stack", "props": {"direction": "vertical", "gap": 16}, "children": ["email-input", "pass-input", "submit-btn"]},
+      "email-input": {"type": "Input", "props": {"placeholder": "you@example.com", "type": "email", "label": "Email"}, "children": []},
+      "pass-input": {"type": "Input", "props": {"placeholder": "Enter password", "type": "password", "label": "Password"}, "children": []},
+      "submit-btn": {"type": "Button", "props": {"label": "Sign In", "variant": "primary"}, "children": []}
     }
   },
   "cached": false,
-  "generation_ms": 3671,
-  "model": "claude-opus-4-6"
+  "generation_ms": 2841,
+  "model": "claude-sonnet-4-6"
 }
 ```
 
 Second request with same or similar prompt: `"cached": true, "generation_ms": 0`.
 
-### Stream
-
-```bash
-curl -N -X POST http://localhost:3112/stream \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "A dashboard with metrics", "catalog": {...}}'
-```
-
-SSE events:
-```
-event: text
-data: {"text":"{\n  \"root\""}     ← raw JSON appearing character by character
-
-event: root
-data: {"root":"card-1"}             ← root ID extracted
-
-event: element
-data: {"id":"card-1","element":{…}} ← complete element ready to render
-
-event: done
-data: {"done":true,"spec":{…}}      ← final validated spec
-```
-
 ### Refine
 
-Instead of regenerating the full spec, send a change request:
+Send a change request instead of regenerating from scratch:
 
 ```bash
-curl -X POST http://localhost:3112/refine \
+curl -X POST http://localhost:3111/spec-forge/refine \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "Add a forgot password link",
-    "current_spec": {"root": "card-1", "elements": {…}},
-    "catalog": {…}
+    "current_spec": {"root": "form-card", "elements": {...}},
+    "catalog": {...}
   }'
 ```
 
@@ -128,14 +121,34 @@ Returns patches:
 ```json
 {
   "patches": [
-    {"op": "add", "id": "link-1", "element": {"type": "Link", "props": {"label": "Forgot Password?"}}},
-    {"op": "replace", "id": "card-1", "element": {"type": "Card", "children": ["input-1", "input-2", "button-1", "link-1"]}}
+    {"op": "add", "id": "link-1", "element": {"type": "Link", "props": {"text": "Forgot Password?"}}},
+    {"op": "replace", "id": "form-stack", "element": {"type": "Stack", "children": ["email-input", "pass-input", "submit-btn", "link-1"]}}
   ],
   "patch_count": 2,
-  "generation_ms": 2635,
-  "spec": {…}
+  "generation_ms": 1823,
+  "spec": {...}
 }
 ```
+
+## Demo Playground
+
+The `demo/index.html` playground connects to the iii engine at port 3111 and provides:
+
+- **JSON tab** — syntax-highlighted spec output
+- **STREAM tab** — real-time log of generation events (calling, root, element, done)
+- **LIVE RENDER** — progressive rendering of UI components as they're generated
+- **STATIC CODE** — copy-pasteable React code using `@anthropic-ai/json-render-react`
+- **Catalog drawer** — 4 presets (dashboard, form, ecommerce, minimal) with editable JSON
+- **Refine** — iteratively modify existing specs without full regeneration
+
+### Component Presets
+
+| Preset | Components |
+|--------|-----------|
+| Dashboard | Stack, Card, Grid, Heading, Metric, Table, Button, Text, Badge, Divider, Input |
+| Form | Stack, Card, Heading, Input, Textarea, Select, Checkbox, Radio, Button, Text, Divider, Badge |
+| Ecommerce | Stack, Grid, Card, Heading, Image, Text, Button, Metric, Badge, Divider, List |
+| Minimal | Stack, Card, Heading, Text, Button |
 
 ## JS Client SDK
 
@@ -146,22 +159,14 @@ cd client && npm install && npm run build
 ```typescript
 import { IIIRenderClient } from '@iii-dev/render-client';
 
-const client = new IIIRenderClient({ baseUrl: 'http://localhost:3112' });
+const client = new IIIRenderClient({ baseUrl: 'http://localhost:3111' });
 
-// One-shot generation
 const { spec, cached } = await client.generate('A login form', catalog);
 
-// Streaming with progressive rendering
-for await (const event of client.stream('A dashboard', catalog)) {
-  if (event.type === 'element') renderElement(event.id, event.element);
-  if (event.type === 'done') finalRender(event.spec);
-}
-
-// Incremental refinement
 const { spec: updated, patches } = await client.refine('Add a header', currentSpec, catalog);
 ```
 
-### With json-render's React renderer
+### With json-render React renderer
 
 ```tsx
 import { Render } from '@anthropic-ai/json-render-react';
@@ -175,42 +180,60 @@ const { spec } = await client.generate('A dashboard', catalog);
 
 ## Architecture
 
+spec-forge is a **pure iii-sdk worker** — no Axum, no standalone HTTP server. All endpoints are registered as iii functions with HTTP triggers.
+
+```
+iii-engine (iii-config.yaml)
+├── RestApiModule (port 3111, CORS)
+├── StateModule (file-based KV)
+├── OtelModule (traces, metrics, logs)
+├── PubSubModule (local)
+└── CronModule
+
+spec-forge worker (connects via WebSocket)
+├── register_functions()     6 iii functions
+├── register_http_triggers() 6 HTTP trigger bindings
+└── business logic
+    ├── generate_core()  cache -> semantic -> rate limit -> Claude -> validate -> store
+    ├── refine_core()    diff-based patching (Add/Replace/Remove/SetRoot)
+    ├── validate_core()  spec validation against catalog
+    ├── prompt_core()    preview LLM prompt
+    ├── stats_core()     metrics from iii Streams
+    └── health_core()    liveness check
+```
+
+### Source Files
+
 ```
 src/
-├── main.rs        # Axum server, 8 routes, embedded demo UI
-├── cache.rs       # SHA-256 exact cache with TTL (DashMap)
-├── semantic.rs    # TF-IDF cosine similarity cache
-├── diff.rs        # Spec patching (Add/Replace/Remove/SetRoot)
-├── limiter.rs     # Rate limiter (req/min + concurrency semaphore)
-├── parser.rs      # Incremental JSON streaming parser
-├── validate.rs    # Spec validation against catalog
-├── prompt.rs      # LLM prompt builder
-├── types.rs       # Core types (UISpec, Catalog, UIElement)
+├── main.rs        # iii worker: SharedState, function registration, HTTP triggers, core logic
+├── types.rs       # Core types: GenerateRequest, Catalog, UISpec, UIElement
+├── cache.rs       # SHA-256 exact cache (DashMap with TTL)
+├── semantic.rs    # TF-IDF cosine similarity cache for fuzzy prompt matching
+├── diff.rs        # Spec patching engine (Add/Replace/Remove/SetRoot ops)
+├── limiter.rs     # Rate limiter (token bucket + concurrency semaphore)
+├── validate.rs    # Spec validation against component catalog
+├── prompt.rs      # LLM prompt builder with design principles
+├── parser.rs      # Incremental JSON streaming parser (unused in pure-worker mode)
 └── bench.rs       # Benchmark binary
-client/
-├── src/index.ts               # JS/TS client SDK + DOM renderer
-└── src/json-render-adapter.ts # Adapter for json-render's <Render>
 demo/
-└── index.html     # Self-contained demo (embedded in binary)
+└── index.html     # Self-contained playground (served separately)
+client/
+├── src/index.ts               # JS/TS client SDK
+└── src/json-render-adapter.ts # Adapter for json-render <Render>
 ```
 
-## Benchmarks
+### iii-sdk Primitives Used
 
-| Operation | json-render (TS) | spec-forge (Rust) |
-|-----------|-----------------|-------------------|
-| Parse 500 elements | 1.2ms | 0.45ms |
-| Validate 500 elements | 0.8ms | 0.5ms |
-| Stringify 500 elements | 0.9ms | 0.6ms |
-
-Raw parsing is 1.5-2.7x faster, but the real value is architectural — cache hits are 0ms vs 3-5s LLM calls.
-
-```bash
-# Run Rust benchmarks
-cargo run --release --bin bench
-
-# Run TypeScript benchmarks (for comparison)
-cd bench && node bench-ts.mjs
-```
+| Primitive | Usage |
+|-----------|-------|
+| `III::init()` | Initialize worker, connect to engine via WebSocket |
+| `register_function_with_description()` | Register 6 named functions with descriptions |
+| `register_trigger("http", ...)` | Bind functions to HTTP routes (`api_path` + `http_method`) |
+| `ApiRequest<T>` / `ApiResponse<T>` | Typed HTTP request/response wrappers |
+| `Streams` | Atomic metric counters (cache hits/misses, generation count/ms) |
+| `get_context().logger` | Structured logging (info, warn, error) |
+| OtelModule | Automatic OpenTelemetry traces, metrics, and logs |
 
 ## Tests
 
@@ -218,16 +241,30 @@ cd bench && node bench-ts.mjs
 cargo test
 ```
 
-38 tests across all modules: cache (4), semantic (7), diff (7), limiter (5), parser (6), validate (6), prompt (3).
+33 tests: cache (4), semantic (7), diff (7), limiter (5), validate (6), prompt (4).
 
 ## Configuration
+
+### Environment
 
 | Env Var | Default | Description |
 |---------|---------|-------------|
 | `ANTHROPIC_API_KEY` | required | Claude API key |
 | `DOTENV_PATH` | `~/agentsos/.env` | Path to .env file |
 
-Server defaults: port 3112, cache TTL 300s, semantic threshold 0.85, rate limit 60 req/min + 5 concurrent.
+### iii Engine (iii-config.yaml)
+
+| Module | Config |
+|--------|--------|
+| RestApiModule | Port 3111, CORS for localhost:3112/3111/3000/5173 |
+| StateModule | File-based KV at `./data/state_store.db` |
+| OtelModule | Memory exporter, all signals enabled |
+| PubSubModule | Local adapter |
+| CronModule | KV-backed cron |
+
+### Worker Defaults
+
+Rate limit: 60 req/min + 5 concurrent. Cache TTL: 300s. Semantic threshold: 0.85. Default model: `claude-sonnet-4-6`.
 
 ## License
 
