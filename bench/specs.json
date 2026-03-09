@@ -1,0 +1,29 @@
+{
+  "small": {
+    "root": "card-1",
+    "elements": {
+      "card-1": { "type": "Card", "props": { "title": "Dashboard" }, "children": ["metric-1", "btn-1"] },
+      "metric-1": { "type": "Metric", "props": { "label": "Revenue", "value": "$1.2M" }, "children": [] },
+      "btn-1": { "type": "Button", "props": { "label": "Export" }, "children": [] }
+    }
+  },
+  "medium_count": 50,
+  "large_count": 500,
+  "catalog": {
+    "components": {
+      "Card": { "description": "A card container", "props": { "title": "string" }, "children": true },
+      "Metric": { "description": "Display a metric", "props": { "label": "string", "value": "string", "format": "string|null" }, "children": false },
+      "Button": { "description": "Clickable button", "props": { "label": "string", "action": "string" }, "children": false },
+      "Text": { "description": "Text paragraph", "props": { "content": "string" }, "children": false },
+      "Table": { "description": "Data table", "props": { "headers": "string[]", "rows": "string[][]" }, "children": false },
+      "Chart": { "description": "Chart visualization", "props": { "type": "string", "data": "object" }, "children": false },
+      "Input": { "description": "Text input field", "props": { "label": "string", "placeholder": "string" }, "children": false },
+      "Select": { "description": "Dropdown selector", "props": { "label": "string", "options": "string[]" }, "children": false }
+    },
+    "actions": {
+      "export_report": { "description": "Export to PDF" },
+      "refresh_data": { "description": "Refresh all" },
+      "save": { "description": "Save changes" }
+    }
+  }
+}
