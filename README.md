@@ -2,6 +2,8 @@
 
 Pure iii-sdk worker for [json-render](https://github.com/anthropics/json-render) UI generation — JSONL patch streaming, caching, rate limiting, and validation. No standalone HTTP server; all endpoints are iii functions with HTTP triggers served by the iii engine.
 
+![spec-forge demo](demo/demo.gif)
+
 ```
 Browser  ──POST──>  iii-engine (:3111)  ──>  spec-forge worker (Rust)  ──>  Claude API
                          │                           │
@@ -30,15 +32,50 @@ spec-forge is a pure iii-sdk worker that streams JSONL patches (RFC 6902) throug
 | API key | Client-side | Server-side only |
 | Observability | None | OpenTelemetry (built-in via iii) |
 
-## Quick Start
+## Prerequisites
 
-**Prerequisites:** [iii engine](https://github.com/iii-hq/engine) installed and available as `iii` CLI.
+### Install iii engine
+
+spec-forge runs on the [iii engine](https://github.com/iii-hq/iii). Install it first:
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
+curl -fsSL https://install.iii.dev/iii/main/install.sh | sh
+```
 
+This installs the `iii` CLI to `~/.local/bin/iii`. Make sure `~/.local/bin` is in your `PATH`.
+
+Verify the installation:
+
+```bash
+iii --version
+```
+
+### Install Rust
+
+spec-forge is a Rust worker. Install Rust if you don't have it:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+## Quick Start
+
+```bash
+# 1. Clone and enter
+git clone https://github.com/iii-hq/spec-forge.git
+cd spec-forge
+
+# 2. Set your Anthropic API key (in .env or environment)
+echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
+
+# 3. Start iii engine
 iii --config iii-config.yaml &
-cargo build --release && ./target/release/spec-forge &
+
+# 4. Build and run the worker
+cargo build --release
+./target/release/spec-forge &
+
+# 5. Serve demo UI
 cd demo && python3 -m http.server 3112 &
 ```
 
@@ -222,7 +259,8 @@ src/
 ├── prompt.rs      # LLM prompt builder (JSONL/RFC 6902 format)
 └── bench.rs       # Benchmark binary
 demo/
-└── index.html     # Self-contained playground with WebSocket streaming
+├── index.html     # Self-contained playground with WebSocket streaming
+└── demo.gif       # Demo recording
 client/
 ├── src/index.ts               # JS/TS client SDK
 └── src/json-render-adapter.ts # Adapter for json-render <Render>
@@ -256,7 +294,7 @@ cargo test
 | Env Var | Default | Description |
 |---------|---------|-------------|
 | `ANTHROPIC_API_KEY` | required | Claude API key |
-| `DOTENV_PATH` | `~/agentsos/.env` | Path to .env file |
+| `DOTENV_PATH` | `.env` | Path to .env file |
 
 ### iii Engine (iii-config.yaml)
 

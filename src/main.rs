@@ -45,10 +45,9 @@ struct RefineInput {
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    dotenv::from_filename(std::env::var("DOTENV_PATH").unwrap_or_else(|_| {
-        let home = std::env::var("HOME").unwrap_or_default();
-        format!("{}/agentsos/.env", home)
-    }))
+    dotenv::from_filename(
+        std::env::var("DOTENV_PATH").unwrap_or_else(|_| ".env".into()),
+    )
     .ok();
 
     let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY must be set");
