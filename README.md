@@ -1,6 +1,6 @@
 # spec-forge
 
-Pure iii-sdk worker for [json-render](https://github.com/anthropics/json-render) UI generation — JSONL patch streaming, caching, rate limiting, and validation. No standalone HTTP server; all endpoints are iii functions with HTTP triggers served by the iii engine.
+Pure iii-sdk worker for [json-render](https://github.com/vercel-labs/json-render) UI generation — JSONL patch streaming, caching, rate limiting, and validation. No standalone HTTP server; all endpoints are iii functions with HTTP triggers served by the iii engine.
 
 ![spec-forge demo](demo/demo.gif)
 
