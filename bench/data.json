@@ -1,0 +1,91 @@
+{
+  "catalogs": {
+    "minimal": {
+      "components": {
+        "Stack": { "description": "Flex container", "props": { "direction": "vertical|horizontal", "gap": "number" }, "children": true },
+        "Card": { "description": "Container card", "props": { "title": "string" }, "children": true },
+        "Heading": { "description": "Section heading", "props": { "level": "1|2|3", "text": "string" }, "children": false },
+        "Text": { "description": "Text paragraph", "props": { "content": "string" }, "children": false },
+        "Button": { "description": "Clickable button", "props": { "label": "string", "variant": "primary|secondary" }, "children": false }
+      },
+      "actions": {
+        "save": { "description": "Save changes" }
+      }
+    },
+    "dashboard": {
+      "components": {
+        "Stack": { "description": "Flex container", "props": { "direction": "vertical|horizontal", "gap": "number" }, "children": true },
+        "Card": { "description": "Container card", "props": { "title": "string" }, "children": true },
+        "Grid": { "description": "Grid layout", "props": { "columns": "number", "gap": "number" }, "children": true },
+        "Heading": { "description": "Section heading", "props": { "level": "1|2|3", "text": "string" }, "children": false },
+        "Metric": { "description": "Display a KPI metric", "props": { "label": "string", "value": "string", "format": "string|null", "trend": "up|down|neutral" }, "children": false },
+        "Table": { "description": "Data table", "props": { "headers": "string[]", "rows": "string[][]" }, "children": false },
+        "Chart": { "description": "Chart visualization", "props": { "type": "bar|line|pie", "data": "object", "title": "string" }, "children": false },
+        "Button": { "description": "Clickable button", "props": { "label": "string", "variant": "primary|secondary", "action": "string" }, "children": false },
+        "Text": { "description": "Text paragraph", "props": { "content": "string" }, "children": false },
+        "Badge": { "description": "Status badge", "props": { "label": "string", "color": "green|red|yellow|blue" }, "children": false },
+        "Divider": { "description": "Visual separator", "props": {}, "children": false },
+        "Input": { "description": "Text input field", "props": { "label": "string", "placeholder": "string", "type": "text|email|password|number" }, "children": false }
+      },
+      "actions": {
+        "export_report": { "description": "Export dashboard to PDF" },
+        "refresh_data": { "description": "Refresh all data" },
+        "save": { "description": "Save changes" },
+        "filter": { "description": "Apply data filter" }
+      }
+    },
+    "form": {
+      "components": {
+        "Stack": { "description": "Flex container", "props": { "direction": "vertical|horizontal", "gap": "number" }, "children": true },
+        "Card": { "description": "Container card", "props": { "title": "string" }, "children": true },
+        "Heading": { "description": "Section heading", "props": { "level": "1|2|3", "text": "string" }, "children": false },
+        "Input": { "description": "Text input", "props": { "placeholder": "string", "type": "text|email|password|number", "label": "string" }, "children": false },
+        "Textarea": { "description": "Multi-line text input", "props": { "placeholder": "string", "label": "string", "rows": "number" }, "children": false },
+        "Select": { "description": "Dropdown selector", "props": { "label": "string", "options": "string[]", "placeholder": "string" }, "children": false },
+        "Checkbox": { "description": "Checkbox toggle", "props": { "label": "string" }, "children": false },
+        "Radio": { "description": "Radio button group", "props": { "label": "string", "options": "string[]" }, "children": false },
+        "Button": { "description": "Button", "props": { "label": "string", "variant": "primary|secondary|destructive" }, "children": false },
+        "Text": { "description": "Text paragraph", "props": { "content": "string" }, "children": false },
+        "Divider": { "description": "Visual separator", "props": {}, "children": false },
+        "Badge": { "description": "Status indicator", "props": { "label": "string", "color": "green|red|yellow" }, "children": false }
+      },
+      "actions": {
+        "submit": { "description": "Submit form" },
+        "validate": { "description": "Validate form fields" },
+        "reset": { "description": "Reset form" }
+      }
+    }
+  },
+  "prompts": {
+    "simple": "A login form with email and password",
+    "medium": "A sales dashboard showing revenue metrics, a line chart of monthly sales, and a table of recent orders with status badges",
+    "complex": "An admin panel with a sidebar navigation, a header with user profile and notifications, a main content area with a grid of metric cards (revenue, users, orders, conversion rate), a sales chart, a recent orders table with sorting and filtering, and action buttons for export and refresh"
+  },
+  "specs": {
+    "tiny": {
+      "root": "card-1",
+      "elements": {
+        "card-1": { "type": "Card", "props": { "title": "Login" }, "children": ["email-input", "btn-1"] },
+        "email-input": { "type": "Input", "props": { "label": "Email", "placeholder": "you@example.com", "type": "email" }, "children": [] },
+        "btn-1": { "type": "Button", "props": { "label": "Sign In", "variant": "primary" }, "children": [] }
+      }
+    },
+    "small": {
+      "root": "main",
+      "elements": {
+        "main": { "type": "Stack", "props": { "direction": "vertical", "gap": 4 }, "children": ["header", "metrics-grid", "table-card"] },
+        "header": { "type": "Heading", "props": { "level": 1, "text": "Dashboard" }, "children": [] },
+        "metrics-grid": { "type": "Grid", "props": { "columns": 3, "gap": 4 }, "children": ["metric-1", "metric-2", "metric-3"] },
+        "metric-1": { "type": "Metric", "props": { "label": "Revenue", "value": "$42,000", "trend": "up" }, "children": [] },
+        "metric-2": { "type": "Metric", "props": { "label": "Users", "value": "1,234", "trend": "up" }, "children": [] },
+        "metric-3": { "type": "Metric", "props": { "label": "Orders", "value": "89", "trend": "down" }, "children": [] },
+        "table-card": { "type": "Card", "props": { "title": "Recent Orders" }, "children": ["orders-table"] },
+        "orders-table": { "type": "Table", "props": { "headers": ["ID", "Customer", "Amount", "Status"], "rows": [["#001", "Alice", "$150", "Shipped"], ["#002", "Bob", "$89", "Pending"]] }, "children": [] }
+      }
+    }
+  },
+  "jsonl_samples": {
+    "tiny": "{\"op\":\"add\",\"path\":\"/root\",\"value\":\"card-1\"}\n{\"op\":\"add\",\"path\":\"/elements/card-1\",\"value\":{\"type\":\"Card\",\"props\":{\"title\":\"Login\"},\"children\":[\"email-input\",\"btn-1\"]}}\n{\"op\":\"add\",\"path\":\"/elements/email-input\",\"value\":{\"type\":\"Input\",\"props\":{\"label\":\"Email\",\"placeholder\":\"you@example.com\",\"type\":\"email\"},\"children\":[]}}\n{\"op\":\"add\",\"path\":\"/elements/btn-1\",\"value\":{\"type\":\"Button\",\"props\":{\"label\":\"Sign In\",\"variant\":\"primary\"},\"children\":[]}}",
+    "small": "{\"op\":\"add\",\"path\":\"/root\",\"value\":\"main\"}\n{\"op\":\"add\",\"path\":\"/elements/main\",\"value\":{\"type\":\"Stack\",\"props\":{\"direction\":\"vertical\",\"gap\":4},\"children\":[\"header\",\"metrics-grid\",\"table-card\"]}}\n{\"op\":\"add\",\"path\":\"/elements/header\",\"value\":{\"type\":\"Heading\",\"props\":{\"level\":1,\"text\":\"Dashboard\"},\"children\":[]}}\n{\"op\":\"add\",\"path\":\"/elements/metrics-grid\",\"value\":{\"type\":\"Grid\",\"props\":{\"columns\":3,\"gap\":4},\"children\":[\"metric-1\",\"metric-2\",\"metric-3\"]}}\n{\"op\":\"add\",\"path\":\"/elements/metric-1\",\"value\":{\"type\":\"Metric\",\"props\":{\"label\":\"Revenue\",\"value\":\"$42,000\",\"trend\":\"up\"},\"children\":[]}}\n{\"op\":\"add\",\"path\":\"/elements/metric-2\",\"value\":{\"type\":\"Metric\",\"props\":{\"label\":\"Users\",\"value\":\"1,234\",\"trend\":\"up\"},\"children\":[]}}\n{\"op\":\"add\",\"path\":\"/elements/metric-3\",\"value\":{\"type\":\"Metric\",\"props\":{\"label\":\"Orders\",\"value\":\"89\",\"trend\":\"down\"},\"children\":[]}}\n{\"op\":\"add\",\"path\":\"/elements/table-card\",\"value\":{\"type\":\"Card\",\"props\":{\"title\":\"Recent Orders\"},\"children\":[\"orders-table\"]}}\n{\"op\":\"add\",\"path\":\"/elements/orders-table\",\"value\":{\"type\":\"Table\",\"props\":{\"headers\":[\"ID\",\"Customer\",\"Amount\",\"Status\"],\"rows\":[[\"#001\",\"Alice\",\"$150\",\"Shipped\"],[\"#002\",\"Bob\",\"$89\",\"Pending\"]]},\"children\":[]}}"
+  }
+}
