@@ -82,27 +82,14 @@ fn make_dashboard_catalog() -> Catalog {
     Catalog { components, actions }
 }
 
-fn make_jsonl_tiny() -> String {
-    [
-        r#"{"op":"add","path":"/root","value":"card-1"}"#,
-        r#"{"op":"add","path":"/elements/card-1","value":{"type":"Card","props":{"title":"Login"},"children":["email-input","btn-1"]}}"#,
-        r#"{"op":"add","path":"/elements/email-input","value":{"type":"Input","props":{"label":"Email","placeholder":"you@example.com","type":"email"},"children":[]}}"#,
-        r#"{"op":"add","path":"/elements/btn-1","value":{"type":"Button","props":{"label":"Sign In","variant":"primary"},"children":[]}}"#,
-    ].join("\n")
-}
+// Single source of truth: bench/data.json (shared with JS benchmarks)
+const BENCH_DATA: &str = include_str!("../bench/data.json");
 
-fn make_jsonl_small() -> String {
-    [
-        r#"{"op":"add","path":"/root","value":"main"}"#,
-        r#"{"op":"add","path":"/elements/main","value":{"type":"Stack","props":{"direction":"vertical","gap":4},"children":["header","metrics-grid","table-card"]}}"#,
-        r#"{"op":"add","path":"/elements/header","value":{"type":"Heading","props":{"level":1,"text":"Dashboard"},"children":[]}}"#,
-        r#"{"op":"add","path":"/elements/metrics-grid","value":{"type":"Grid","props":{"columns":3,"gap":4},"children":["metric-1","metric-2","metric-3"]}}"#,
-        r#"{"op":"add","path":"/elements/metric-1","value":{"type":"Metric","props":{"label":"Revenue","value":"$42,000","trend":"up"},"children":[]}}"#,
-        r#"{"op":"add","path":"/elements/metric-2","value":{"type":"Metric","props":{"label":"Users","value":"1,234","trend":"up"},"children":[]}}"#,
-        r#"{"op":"add","path":"/elements/metric-3","value":{"type":"Metric","props":{"label":"Orders","value":"89","trend":"down"},"children":[]}}"#,
-        r#"{"op":"add","path":"/elements/table-card","value":{"type":"Card","props":{"title":"Recent Orders"},"children":["orders-table"]}}"#,
-        r##"{"op":"add","path":"/elements/orders-table","value":{"type":"Table","props":{"headers":["ID","Customer","Amount","Status"],"rows":[["#001","Alice","$150","Shipped"],["#002","Bob","$89","Pending"]]},"children":[]}}"##,
-    ].join("\n")
+fn load_jsonl_samples() -> (String, String) {
+    let data: serde_json::Value = serde_json::from_str(BENCH_DATA).unwrap();
+    let tiny = data["jsonl_samples"]["tiny"].as_str().unwrap().to_string();
+    let small = data["jsonl_samples"]["small"].as_str().unwrap().to_string();
+    (tiny, small)
 }
 
 fn parse_jsonl_patches(raw: &str) -> (Vec<serde_json::Value>, UISpec) {
@@ -188,8 +175,7 @@ fn main() {
 
     let catalog_json = serde_json::to_string(&catalog).unwrap();
 
-    let jsonl_tiny = make_jsonl_tiny();
-    let jsonl_small = make_jsonl_small();
+    let (jsonl_tiny, jsonl_small) = load_jsonl_samples();
 
     println!("╔══════════════════════════════════════════════════════════════════╗");
     println!("║            spec-forge (Rust) Benchmark — with black_box        ║");

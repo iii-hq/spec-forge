@@ -76,9 +76,11 @@ const comparisons = [
   ["Semantic miss (100 entries)", null, "semantic-miss-100-entries"],
   ["Rate limiter acquire", null, "rate-limiter-acquire"],
 
-  // Pipeline
-  ["Pipeline 3 elements", "pipeline-3-elements", "pipeline-cold-3-elements"],
-  ["Pipeline 9 elements", "pipeline-9-elements", "pipeline-cold-9-elements"],
+  // Pipeline (json-render: stream → validate → stringify; spec-forge: cache → parse → validate → store)
+  ["Pipeline 3 (jr: stream→validate→stringify)", "pipeline-3-elements", null],
+  ["Pipeline 9 (jr: stream→validate→stringify)", "pipeline-9-elements", null],
+  ["Pipeline 3 (sf: cache→parse→validate→store)", null, "pipeline-cold-3-elements"],
+  ["Pipeline 9 (sf: cache→parse→validate→store)", null, "pipeline-cold-9-elements"],
   ["Pipeline cached hit", null, "pipeline-cached-hit"],
 ];
 

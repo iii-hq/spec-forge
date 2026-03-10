@@ -87,7 +87,7 @@ Measures real HTTP latency through the iii engine (requires running server):
 
 ## Files
 
-```
+```text
 bench/
 ├── README.md              # This file
 ├── run.sh                 # Orchestrator script

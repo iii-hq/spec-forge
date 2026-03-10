@@ -89,97 +89,102 @@ class SpecCache {
   }
 }
 
-// --- TF-IDF Semantic Cache (from semantic.rs: SemanticCache) ---
+// --- TF Semantic Cache (from semantic.rs: SemanticCache) ---
+// Matches Rust algorithm: normalized term frequency (no IDF), stop word filtering,
+// vectors precomputed on store(), cosine similarity on find.
+const STOP_WORDS = new Set([
+  "the", "a", "an", "is", "are", "me", "show", "with", "and", "or", "for", "of", "to", "my",
+  "in", "on", "i", "want", "need", "please", "can", "you", "create", "make", "build", "give",
+  "display", "render", "generate", "some", "that", "this", "it", "have", "has",
+]);
+
 class SemanticCache {
   constructor(threshold = 0.85) {
     this.threshold = threshold;
-    this.entries = [];
-    this.idfCache = new Map();
+    this.entries = new Map();
   }
 
-  tokenize(text) {
-    return text.toLowerCase().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(Boolean);
+  static normalize(text) {
+    return text.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 0 && !STOP_WORDS.has(w));
   }
 
-  termFrequency(tokens) {
-    const tf = new Map();
-    for (const t of tokens) tf.set(t, (tf.get(t) || 0) + 1);
-    const len = tokens.length || 1;
-    for (const [k, v] of tf) tf.set(k, v / len);
-    return tf;
-  }
-
-  tfidfVector(tokens) {
-    const tf = this.termFrequency(tokens);
-    const vec = new Map();
-    const n = this.entries.length + 1;
-    for (const [term, freq] of tf) {
-      let df = 1;
-      for (const entry of this.entries) {
-        if (entry.tokens.includes(term)) df++;
-      }
-      vec.set(term, freq * Math.log(n / df));
-    }
+  static vectorize(text) {
+    const words = SemanticCache.normalize(text);
+    const counts = new Map();
+    for (const w of words) counts.set(w, (counts.get(w) || 0) + 1);
+    const len = Math.max(words.length, 1);
+    const vec = [];
+    for (const [k, v] of counts) vec.push([k, v / len]);
+    vec.sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
     return vec;
   }
 
-  cosineSimilarity(a, b) {
+  static cosineSimilarity(a, b) {
+    const aMap = new Map(a);
+    const bMap = new Map(b);
+    const allKeys = new Set([...aMap.keys(), ...bMap.keys()]);
     let dot = 0, magA = 0, magB = 0;
-    for (const [key, val] of a) {
-      magA += val * val;
-      if (b.has(key)) dot += val * b.get(key);
+    for (const key of allKeys) {
+      const va = aMap.get(key) || 0;
+      const vb = bMap.get(key) || 0;
+      dot += va * vb;
+      magA += va * va;
+      magB += vb * vb;
     }
-    for (const [, val] of b) magB += val * val;
-    const denom = Math.sqrt(magA) * Math.sqrt(magB);
-    return denom === 0 ? 0 : dot / denom;
+    if (magA === 0 || magB === 0) return 0;
+    return dot / (Math.sqrt(magA) * Math.sqrt(magB));
   }
 
   store(prompt, catalogHash, cacheKey) {
-    const tokens = this.tokenize(prompt);
-    this.entries.push({ prompt, catalogHash, cacheKey, tokens });
+    const vector = SemanticCache.vectorize(prompt);
+    if (!this.entries.has(catalogHash)) this.entries.set(catalogHash, []);
+    this.entries.get(catalogHash).push({ vector, cacheKey });
   }
 
   findSimilar(prompt, catalogHash) {
-    const tokens = this.tokenize(prompt);
-    const queryVec = this.tfidfVector(tokens);
+    const bucket = this.entries.get(catalogHash);
+    if (!bucket) return null;
+    const queryVec = SemanticCache.vectorize(prompt);
     let bestKey = null;
     let bestScore = 0;
 
-    for (const entry of this.entries) {
-      if (entry.catalogHash !== catalogHash) continue;
-      const entryVec = this.tfidfVector(entry.tokens);
-      const score = this.cosineSimilarity(queryVec, entryVec);
-      if (score > bestScore && score >= this.threshold) {
+    for (const entry of bucket) {
+      const score = SemanticCache.cosineSimilarity(queryVec, entry.vector);
+      if (score > bestScore) {
         bestScore = score;
         bestKey = entry.cacheKey;
       }
     }
-    return bestKey;
+    return bestScore >= this.threshold ? bestKey : null;
   }
 }
 
-// --- Rate Limiter (from limiter.rs: token bucket + concurrency semaphore) ---
+// --- Rate Limiter (from limiter.rs: minute-window counter + concurrency semaphore) ---
+// Matches Rust: fixed minute window (not continuous refill), atomic counter + semaphore.
 class RateLimiter {
-  constructor(tokensPerMin = 60, maxConcurrent = 5) {
-    this.tokens = tokensPerMin;
-    this.maxTokens = tokensPerMin;
-    this.lastRefill = Date.now();
+  constructor(maxPerMinute = 60, maxConcurrent = 5) {
+    this.maxPerMinute = maxPerMinute;
+    this.minuteCount = 0;
+    this.minuteStart = Date.now();
     this.concurrent = 0;
     this.maxConcurrent = maxConcurrent;
     this.totalProcessed = 0;
     this.totalRejected = 0;
   }
-  tryAcquire() {
+  checkMinuteWindow() {
     const now = Date.now();
-    const elapsed = (now - this.lastRefill) / 60_000;
-    this.tokens = Math.min(this.maxTokens, this.tokens + elapsed * this.maxTokens);
-    this.lastRefill = now;
-
-    if (this.tokens < 1 || this.concurrent >= this.maxConcurrent) {
+    if (now - this.minuteStart >= 60_000) {
+      this.minuteStart = now;
+      this.minuteCount = 0;
+    }
+  }
+  tryAcquire() {
+    this.checkMinuteWindow();
+    if (this.minuteCount >= this.maxPerMinute || this.concurrent >= this.maxConcurrent) {
       this.totalRejected++;
       return false;
     }
-    this.tokens -= 1;
+    this.minuteCount++;
     this.concurrent++;
     this.totalProcessed++;
     return true;
@@ -453,8 +458,8 @@ run("semantic-miss-100-entries", () => {
 // --- 7. Rate Limiter ---
 console.log("\n── Rate Limiter (token bucket + concurrency) ──");
 
+const limiter = new RateLimiter(1_000_000, 1000);
 run("rate-limiter-acquire", () => {
-  const limiter = new RateLimiter(1_000_000, 1000);
   limiter.tryAcquire();
   limiter.release();
 }, 500_000);

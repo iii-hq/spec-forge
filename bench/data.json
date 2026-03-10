@@ -6,7 +6,8 @@
         "Card": { "description": "Container card", "props": { "title": "string" }, "children": true },
         "Heading": { "description": "Section heading", "props": { "level": "1|2|3", "text": "string" }, "children": false },
         "Text": { "description": "Text paragraph", "props": { "content": "string" }, "children": false },
-        "Button": { "description": "Clickable button", "props": { "label": "string", "variant": "primary|secondary" }, "children": false }
+        "Button": { "description": "Clickable button", "props": { "label": "string", "variant": "primary|secondary" }, "children": false },
+        "Input": { "description": "Text input", "props": { "placeholder": "string", "type": "text|email|password|number", "label": "string" }, "children": false }
       },
       "actions": {
         "save": { "description": "Save changes" }

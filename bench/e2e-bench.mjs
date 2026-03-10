@@ -37,6 +37,10 @@ async function measureGenerate(prompt, catalog) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt, catalog }),
   });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`/generate returned ${resp.status}: ${text}`);
+  }
   const body = await resp.json();
   const elapsed = performance.now() - start;
   return { elapsed, cached: body.cached, generation_ms: body.generation_ms, elements: Object.keys(body.spec?.elements || {}).length };
@@ -60,6 +64,10 @@ async function measureStream(prompt, catalog) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt, catalog }),
   });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`/stream returned ${resp.status}: ${text}`);
+  }
   const body = await resp.json();
   const httpTime = performance.now() - start;
 
@@ -278,4 +286,7 @@ async function main() {
   console.log("");
 }
 
-main().catch(console.error);
+main().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});

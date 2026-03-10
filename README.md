@@ -76,9 +76,9 @@ json-render has **zero caching**. Every request is a fresh LLM call (3-5 seconds
 | TF-IDF semantic hit (100 entries) | 905 µs | N/A |
 | Rate limiter acquire + release | 0.07 µs | N/A |
 
-On repeat requests, spec-forge returns in **< 1 µs**. json-render re-invokes Claude every time: **3,000,000 - 5,000,000 µs**.
+On repeat requests, spec-forge returns in **< 1 µs** (SHA-256 cache hit). json-render has no cache and re-invokes Claude every time: **3,000,000 - 5,000,000 µs** (3-5 seconds).
 
-That's a **~5,000,000x difference** on cached requests.
+In practice this means repeat-request latency drops from **3-5 seconds** to **sub-microsecond** — the user gets an instant response instead of waiting for a full LLM round-trip.
 
 The TF-IDF semantic cache catches _similar_ prompts too — "A revenue dashboard" matches "A sales dashboard with revenue metrics" at the 0.85 cosine threshold without burning an LLM call.
 

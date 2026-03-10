@@ -61,7 +61,8 @@ case "${1:-all}" in
     echo ""
     echo "━━━ Phase 3: End-to-end (if server running) ━━━"
     echo ""
-    if curl -sf http://localhost:3111/spec-forge/health >/dev/null 2>&1; then
+    E2E_URL="${SPEC_FORGE_URL:-http://localhost:3111}"
+    if curl -sf "$E2E_URL/spec-forge/health" >/dev/null 2>&1; then
       node "$SCRIPT_DIR/e2e-bench.mjs"
     else
       echo "  spec-forge not running on :3111 — skipping e2e benchmark"
