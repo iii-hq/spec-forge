@@ -1,5 +1,4 @@
 mod cache;
-mod diff;
 mod limiter;
 mod prompt;
 mod semantic;
@@ -17,6 +16,7 @@ use semantic::SemanticCache;
 use types::*;
 
 struct SharedState {
+    iii: III,
     cache: SpecCache,
     semantic: SemanticCache,
     limiter: RateLimiter,
@@ -59,6 +59,7 @@ async fn main() {
     let streams = Streams::new(iii.clone());
 
     let shared = Arc::new(SharedState {
+        iii: iii.clone(),
         cache: SpecCache::new(Duration::from_secs(300)),
         semantic: SemanticCache::new(0.85),
         limiter: RateLimiter::new(60, 5),
@@ -76,8 +77,9 @@ async fn main() {
 
     println!("spec-forge worker connected to {engine_url}");
     println!();
-    println!("  iii functions (6) + HTTP triggers (port 3111):");
+    println!("  iii functions (7) + HTTP triggers (port 3111):");
     println!("    POST /spec-forge/generate  — cache → Claude → validate");
+    println!("    POST /spec-forge/stream    — real-time patches via iii Channel (WebSocket)");
     println!("    POST /spec-forge/refine    — patch-based diff");
     println!("    POST /spec-forge/validate  — catalog validation");
     println!("    POST /spec-forge/prompt    — preview LLM prompt");
@@ -211,6 +213,33 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
         },
     );
 
+    let s = shared.clone();
+    iii.register_function_with_description(
+        "api::post::spec-forge::stream",
+        "Stream UI spec patches via iii Channel — returns WebSocket reader ref for real-time patches",
+        move |input| {
+            let s = s.clone();
+            async move {
+                let req: ApiRequest<GenerateRequest> = serde_json::from_value(input)
+                    .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
+                let ctx = get_context();
+                ctx.logger.info("stream", Some(json!({"prompt": req.body.prompt})));
+                match stream_core(&s, req.body).await {
+                    Ok(body) => Ok(serde_json::to_value(ApiResponse {
+                        status_code: 200,
+                        headers: json_headers(),
+                        body,
+                    })?),
+                    Err((code, body)) => Ok(serde_json::to_value(ApiResponse {
+                        status_code: code,
+                        headers: json_headers(),
+                        body,
+                    })?),
+                }
+            }
+        },
+    );
+
     iii.register_service(
         "spec-forge",
         Some(
@@ -258,6 +287,12 @@ fn register_http_triggers(iii: &III) {
             "GET",
             "Liveness check",
         ),
+        (
+            "api::post::spec-forge::stream",
+            "spec-forge/stream",
+            "POST",
+            "Stream patches via iii Channel (WebSocket)",
+        ),
     ];
 
     for (function_id, api_path, method, description) in triggers {
@@ -288,6 +323,7 @@ async fn generate_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (
             .ok();
         return Ok(json!({
             "spec": spec,
+            "patches": [],
             "cached": true,
             "generation_ms": 0u64,
             "model": req.model,
@@ -303,6 +339,7 @@ async fn generate_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (
                 .ok();
             return Ok(json!({
                 "spec": spec,
+                "patches": [],
                 "cached": true,
                 "generation_ms": 0u64,
                 "model": req.model,
@@ -328,17 +365,10 @@ async fn generate_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (
         .await
         .map_err(|e| (502, json!({"error": format!("Claude API error: {}", e)})))?;
 
-    let json_str = extract_json_from_response(&raw).ok_or_else(|| {
+    let (patches, spec) = parse_jsonl_patches(&raw).map_err(|e| {
         (
             422,
-            json!({"error": "Could not extract JSON from response", "details": [raw.clone()]}),
-        )
-    })?;
-
-    let spec: UISpec = serde_json::from_str(&json_str).map_err(|e| {
-        (
-            422,
-            json!({"error": format!("Invalid spec JSON: {}", e), "details": [json_str.clone()]}),
+            json!({"error": format!("Failed to parse JSONL patches: {}", e), "raw": raw}),
         )
     })?;
 
@@ -365,18 +395,87 @@ async fn generate_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (
         .increment("spec-forge::metrics::generate", "total_ms", elapsed as i64)
         .await
         .ok();
+    s.streams
+        .increment(
+            "spec-forge::metrics::generate",
+            "total_patches",
+            patches.len() as i64,
+        )
+        .await
+        .ok();
     tracing::info!(
-        "Generated in {}ms, {} elements",
+        "Generated in {}ms, {} patches, {} elements",
         elapsed,
+        patches.len(),
         spec.elements.len()
     );
 
     Ok(json!({
         "spec": spec,
+        "patches": patches,
         "cached": false,
         "generation_ms": elapsed,
         "model": req.model,
     }))
+}
+
+fn apply_patch(spec: &mut UISpec, patch: &Value) {
+    let op = patch["op"].as_str().unwrap_or("");
+    let path = patch["path"].as_str().unwrap_or("");
+
+    match (op, path) {
+        ("add", "/root") | ("replace", "/root") => {
+            if let Some(val) = patch["value"].as_str() {
+                spec.root = val.to_string();
+            }
+        }
+        ("add", p) | ("replace", p) if p.starts_with("/elements/") => {
+            let key = p.strip_prefix("/elements/").unwrap_or("");
+            if !key.is_empty() {
+                if let Ok(el) = serde_json::from_value::<UIElement>(patch["value"].clone()) {
+                    spec.elements.insert(key.to_string(), el);
+                }
+            }
+        }
+        ("remove", p) if p.starts_with("/elements/") => {
+            let key = p.strip_prefix("/elements/").unwrap_or("");
+            spec.elements.remove(key);
+        }
+        _ => {}
+    }
+}
+
+fn parse_jsonl_to_patches(raw: &str) -> Vec<Value> {
+    raw.lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() || !line.starts_with('{') {
+                return None;
+            }
+            serde_json::from_str(line).ok()
+        })
+        .collect()
+}
+
+fn parse_jsonl_patches(raw: &str) -> Result<(Vec<Value>, UISpec), String> {
+    let patches = parse_jsonl_to_patches(raw);
+    let mut spec = UISpec {
+        root: String::new(),
+        elements: HashMap::new(),
+    };
+
+    for patch in &patches {
+        apply_patch(&mut spec, patch);
+    }
+
+    if spec.root.is_empty() {
+        return Err("No /root patch found in JSONL output".to_string());
+    }
+    if spec.elements.is_empty() {
+        return Err("No /elements patches found in JSONL output".to_string());
+    }
+
+    Ok((patches, spec))
 }
 
 async fn refine_core(s: &SharedState, req: RefineInput) -> Result<Value, (u16, Value)> {
@@ -388,36 +487,27 @@ async fn refine_core(s: &SharedState, req: RefineInput) -> Result<Value, (u16, V
         .await
         .map_err(|e| (429, json!({"error": format!("Rate limited: {}", e)})))?;
 
-    let llm_prompt = diff::build_diff_prompt(&req.prompt, &req.current_spec, &req.catalog);
+    let llm_prompt =
+        prompt::build_refine_prompt(&req.prompt, &req.current_spec, &req.catalog);
     tracing::info!("Calling Claude for refine ({})...", req.model);
 
     let raw = call_claude(&s.http, &s.api_key, &req.model, &llm_prompt)
         .await
         .map_err(|e| (502, json!({"error": format!("Claude API error: {}", e)})))?;
 
-    let json_str = if let Some(start) = raw.find('[') {
-        if let Some(end) = raw.rfind(']') {
-            raw[start..=end].to_string()
-        } else {
-            extract_json_from_response(&raw).unwrap_or_default()
-        }
-    } else if let Some(obj) = extract_json_from_response(&raw) {
-        format!("[{}]", obj)
-    } else {
+    let patches = parse_jsonl_to_patches(&raw);
+    let mut new_spec = req.current_spec.clone();
+
+    for patch in &patches {
+        apply_patch(&mut new_spec, patch);
+    }
+
+    if patches.is_empty() {
         return Err((
             422,
-            json!({"error": "Could not extract patches from response", "details": [raw]}),
+            json!({"error": "No patches found in refine response", "raw": raw}),
         ));
-    };
-
-    let patches: Vec<diff::SpecPatch> = serde_json::from_str(&json_str).map_err(|e| {
-        (
-            422,
-            json!({"error": format!("Invalid patches JSON: {}", e), "details": [json_str]}),
-        )
-    })?;
-
-    let new_spec = diff::apply_patches(&req.current_spec, &patches);
+    }
 
     let errors = validate::validate_spec(&new_spec, &req.catalog);
     if !errors.is_empty() {
@@ -458,6 +548,184 @@ fn prompt_core(prompt_text: &str, catalog: &Catalog) -> Value {
     json!({ "prompt": prompt::build_prompt(prompt_text, catalog) })
 }
 
+async fn stream_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (u16, Value)> {
+    let catalog_json = serde_json::to_string(&req.catalog).unwrap();
+    let key = SpecCache::cache_key(&req.prompt, &catalog_json);
+
+    if let Some(spec) = s.cache.get(&key) {
+        s.streams
+            .increment("spec-forge::metrics::cache", "hits", 1)
+            .await
+            .ok();
+        return Ok(json!({
+            "cached": true,
+            "spec": spec,
+            "channel": null,
+        }));
+    }
+
+    let _guard = s
+        .limiter
+        .acquire()
+        .await
+        .map_err(|e| (429, json!({"error": format!("Rate limited: {}", e)})))?;
+
+    let channel = s
+        .iii
+        .create_channel(Some(64))
+        .await
+        .map_err(|e| (500, json!({"error": format!("Channel creation failed: {}", e)})))?;
+
+    let reader_ref = channel.reader_ref.clone();
+    let writer = channel.writer;
+    let http = s.http.clone();
+    let api_key = s.api_key.clone();
+    let model = req.model.clone();
+    let prompt_text = prompt::build_prompt(&req.prompt, &req.catalog);
+    let catalog = req.catalog.clone();
+    let cache = s.cache.clone();
+    let semantic = s.semantic.clone();
+    let streams = s.streams.clone();
+    let prompt_str = req.prompt.clone();
+    let catalog_hash = SpecCache::cache_key("", &catalog_json);
+
+    tokio::spawn(async move {
+        let start = std::time::Instant::now();
+        match call_claude_streaming(&http, &api_key, &model, &prompt_text, &writer).await {
+            Ok(spec) => {
+                let errors = validate::validate_spec(&spec, &catalog);
+                let elapsed = start.elapsed().as_millis() as u64;
+                if errors.is_empty() {
+                    cache.set(key.clone(), spec.clone());
+                    semantic.store(&prompt_str, &catalog_hash, key);
+                }
+                let done_msg = json!({
+                    "type": "done",
+                    "spec": spec,
+                    "valid": errors.is_empty(),
+                    "errors": errors.iter().map(|e| e.to_string()).collect::<Vec<_>>(),
+                    "generation_ms": elapsed,
+                });
+                writer.send_message(&done_msg.to_string()).await.ok();
+                streams.increment("spec-forge::metrics::generate", "count", 1).await.ok();
+                streams.increment("spec-forge::metrics::generate", "total_ms", elapsed as i64).await.ok();
+            }
+            Err(e) => {
+                let err_msg = json!({"type": "error", "error": e});
+                writer.send_message(&err_msg.to_string()).await.ok();
+            }
+        }
+        writer.close().await.ok();
+    });
+
+    Ok(json!({
+        "cached": false,
+        "channel": {
+            "channel_id": reader_ref.channel_id,
+            "access_key": reader_ref.access_key,
+        },
+    }))
+}
+
+async fn call_claude_streaming(
+    http: &Client,
+    api_key: &str,
+    model: &str,
+    prompt_text: &str,
+    writer: &iii_sdk::channels::ChannelWriter,
+) -> Result<UISpec, String> {
+    let body = json!({
+        "model": model,
+        "max_tokens": 2048,
+        "stream": true,
+        "messages": [{"role": "user", "content": prompt_text}]
+    });
+
+    let resp = http
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("content-type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let text = resp.text().await.map_err(|e| format!("Read error: {}", e))?;
+        return Err(format!("Claude API {}: {}", status, text));
+    }
+
+    let mut spec = UISpec {
+        root: String::new(),
+        elements: HashMap::new(),
+    };
+    let mut token_buf = String::new();
+    let mut stream = resp.bytes_stream();
+    use futures_util::StreamExt;
+    let mut sse_buf = String::new();
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Stream error: {}", e))?;
+        sse_buf.push_str(&String::from_utf8_lossy(&chunk));
+
+        while let Some(pos) = sse_buf.find('\n') {
+            let line = sse_buf[..pos].to_string();
+            sse_buf = sse_buf[pos + 1..].to_string();
+
+            let line = line.trim();
+            if let Some(data) = line.strip_prefix("data: ") {
+                if data == "[DONE]" {
+                    continue;
+                }
+                if let Ok(event) = serde_json::from_str::<Value>(data) {
+                    if event["type"] == "content_block_delta" {
+                        if let Some(text) = event["delta"]["text"].as_str() {
+                            token_buf.push_str(text);
+
+                            while let Some(nl) = token_buf.find('\n') {
+                                let jsonl_line = token_buf[..nl].trim().to_string();
+                                token_buf = token_buf[nl + 1..].to_string();
+
+                                if jsonl_line.is_empty() || !jsonl_line.starts_with('{') {
+                                    continue;
+                                }
+                                if let Ok(patch) = serde_json::from_str::<Value>(&jsonl_line) {
+                                    apply_patch(&mut spec, &patch);
+                                    let msg = json!({"type": "patch", "patch": patch});
+                                    writer.send_message(&msg.to_string()).await.ok();
+                                }
+                            }
+                        }
+                    }
+                    if event["type"] == "error" {
+                        return Err(format!(
+                            "Claude stream error: {}",
+                            event["error"]["message"].as_str().unwrap_or("unknown")
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    let remaining = token_buf.trim();
+    if !remaining.is_empty() && remaining.starts_with('{') {
+        if let Ok(patch) = serde_json::from_str::<Value>(remaining) {
+            apply_patch(&mut spec, &patch);
+            let msg = json!({"type": "patch", "patch": patch});
+            writer.send_message(&msg.to_string()).await.ok();
+        }
+    }
+
+    if spec.root.is_empty() {
+        return Err("No /root patch found in JSONL output".to_string());
+    }
+
+    Ok(spec)
+}
+
 fn stats_core(s: &SharedState) -> Value {
     let stats = s.limiter.stats();
     json!({
@@ -481,7 +749,8 @@ async fn call_claude(
 ) -> Result<String, String> {
     let body = json!({
         "model": model,
-        "max_tokens": 4096,
+        "max_tokens": 2048,
+        "stream": true,
         "messages": [{"role": "user", "content": prompt_text}]
     });
 
@@ -496,37 +765,50 @@ async fn call_claude(
         .map_err(|e| format!("HTTP error: {}", e))?;
 
     let status = resp.status();
-    let text = resp
-        .text()
-        .await
-        .map_err(|e| format!("Read error: {}", e))?;
-
     if !status.is_success() {
+        let text = resp.text().await.map_err(|e| format!("Read error: {}", e))?;
         return Err(format!("Claude API {}: {}", status, text));
     }
 
-    let parsed: Value = serde_json::from_str(&text).map_err(|e| format!("JSON parse: {}", e))?;
-    parsed["content"][0]["text"]
-        .as_str()
-        .ok_or_else(|| "No text in Claude response".to_string())
-        .map(String::from)
-}
+    let mut full_text = String::new();
+    let mut stream = resp.bytes_stream();
+    use futures_util::StreamExt;
+    let mut buf = String::new();
 
-fn extract_json_from_response(text: &str) -> Option<String> {
-    let start = text.find('{')?;
-    let bytes = text[start..].as_bytes();
-    let mut depth = 0;
-    for (i, &b) in bytes.iter().enumerate() {
-        match b {
-            b'{' => depth += 1,
-            b'}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(text[start..start + i + 1].to_string());
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Stream error: {}", e))?;
+        buf.push_str(&String::from_utf8_lossy(&chunk));
+
+        while let Some(pos) = buf.find('\n') {
+            let line = buf[..pos].to_string();
+            buf = buf[pos + 1..].to_string();
+
+            let line = line.trim();
+            if let Some(data) = line.strip_prefix("data: ") {
+                if data == "[DONE]" {
+                    continue;
+                }
+                if let Ok(event) = serde_json::from_str::<Value>(data) {
+                    if event["type"] == "content_block_delta" {
+                        if let Some(text) = event["delta"]["text"].as_str() {
+                            full_text.push_str(text);
+                        }
+                    }
+                    if event["type"] == "error" {
+                        return Err(format!(
+                            "Claude stream error: {}",
+                            event["error"]["message"].as_str().unwrap_or("unknown")
+                        ));
+                    }
                 }
             }
-            _ => {}
         }
     }
-    None
+
+    if full_text.is_empty() {
+        return Err("No text received from Claude stream".to_string());
+    }
+
+    Ok(full_text)
 }
+
