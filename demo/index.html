@@ -1610,6 +1610,8 @@ function renderStreamElement(spec, id) {
   return node;
 }
 
+const WS_ENGINE = "ws://" + (window.location.hostname || "localhost") + ":49134";
+
 function applyPatch(spec, patch) {
   const op = patch.op;
   const path = patch.path;
@@ -1632,18 +1634,19 @@ async function doStream() {
   if (!prompt) return;
 
   setLoading(true);
-  setBadge("streaming", "GENERATING");
+  setBadge("streaming", "CONNECTING");
 
   const jsonPanel = document.getElementById("jsonPanel");
   const previewPanel = document.getElementById("previewPanel");
-  jsonPanel.innerHTML = '<div class="json-placeholder">Streaming JSONL patches from Claude via iii...</div>';
+  jsonPanel.innerHTML = '<div class="json-placeholder">Opening iii Channel...</div>';
   previewPanel.innerHTML = '<div class="preview-empty"><span>Waiting for patches...</span></div>';
   streamLogEntries = [];
   document.getElementById("streamLog").innerHTML = "";
 
   try {
     addStreamLog("request", { prompt: prompt.substring(0, 80) });
-    const res = await fetch(ENGINE + "/spec-forge/generate", {
+
+    const res = await fetch(ENGINE + "/spec-forge/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt, catalog }),
@@ -1657,11 +1660,8 @@ async function doStream() {
       return;
     }
 
-    const patches = data.patches || [];
-    const partialSpec = { root: "", elements: {} };
-
-    if (patches.length === 0) {
-      addStreamLog("cached", { cached: true });
+    if (data.cached) {
+      addStreamLog("cached", { elements: Object.keys(data.spec.elements).length });
       currentSpec = data.spec;
       jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(data.spec, null, 2));
       renderSpec(currentSpec);
@@ -1672,33 +1672,60 @@ async function doStream() {
       return;
     }
 
-    for (let i = 0; i < patches.length; i++) {
-      const patch = patches[i];
-      applyPatch(partialSpec, patch);
+    const ch = data.channel;
+    const wsUrl = WS_ENGINE + "/ws/channels/" + ch.channel_id + "?key=" + encodeURIComponent(ch.access_key) + "&dir=read";
+    addStreamLog("channel", { id: ch.channel_id });
+    setBadge("streaming", "STREAMING");
+    jsonPanel.innerHTML = '<div class="json-placeholder">Connected — waiting for Claude...</div>';
 
-      const opLabel = patch.op.toUpperCase();
-      const pathLabel = patch.path;
-      addStreamLog(opLabel, { path: pathLabel, op: patch.op });
+    const partialSpec = { root: "", elements: {} };
+    let patchCount = 0;
+    let generationMs = 0;
 
-      if (partialSpec.root && Object.keys(partialSpec.elements).length > 0) {
-        jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(partialSpec, null, 2)) + '<span class="cursor"></span>';
-        jsonPanel.scrollTop = jsonPanel.scrollHeight;
+    await new Promise((resolve, reject) => {
+      const ws = new WebSocket(wsUrl);
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
 
-        previewPanel.innerHTML = "";
-        const el = renderStreamElement(partialSpec, partialSpec.root);
-        if (el) previewPanel.appendChild(el);
-      }
+          if (msg.type === "patch") {
+            const patch = msg.patch;
+            patchCount++;
+            applyPatch(partialSpec, patch);
+            addStreamLog(patch.op.toUpperCase(), { path: patch.path });
 
-      if (patches.length > 1) await new Promise(r => setTimeout(r, 60));
+            if (partialSpec.root && Object.keys(partialSpec.elements).length > 0) {
+              jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(partialSpec, null, 2)) + '<span class="cursor"></span>';
+              jsonPanel.scrollTop = jsonPanel.scrollHeight;
+              previewPanel.innerHTML = "";
+              const el = renderStreamElement(partialSpec, partialSpec.root);
+              if (el) previewPanel.appendChild(el);
+            }
+            setBadge("streaming", patchCount + " PATCHES");
+          } else if (msg.type === "done") {
+            generationMs = msg.generation_ms || 0;
+            currentSpec = msg.spec;
+            addStreamLog("done", { patches: patchCount, ms: generationMs, valid: msg.valid });
+            if (msg.errors && msg.errors.length) addStreamLog("warn", { errors: msg.errors });
+          } else if (msg.type === "error") {
+            addStreamLog("error", { error: msg.error });
+            reject(new Error(msg.error));
+          }
+        } catch (e) {
+          addStreamLog("parse-error", { raw: event.data.substring(0, 100) });
+        }
+      };
+      ws.onclose = () => resolve();
+      ws.onerror = (e) => reject(new Error("WebSocket error"));
+    });
+
+    if (currentSpec) {
+      document.getElementById("refineBtn").disabled = false;
+      jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(currentSpec, null, 2));
+      renderSpec(currentSpec);
+      const n = Object.keys(currentSpec.elements).length;
+      setBadge("done", patchCount + " PATCHES · " + n + " ELEMENTS · " + generationMs + "MS");
     }
-
-    addStreamLog("done", { patches: patches.length, ms: data.generation_ms });
-    currentSpec = data.spec;
-    document.getElementById("refineBtn").disabled = false;
-    jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(data.spec, null, 2));
-    renderSpec(currentSpec);
-    const n = Object.keys(data.spec.elements).length;
-    setBadge("done", patches.length + " PATCHES · " + n + " ELEMENTS · " + data.generation_ms + "MS");
   } catch (e) {
     addStreamLog("error", { error: e.message });
     setBadge("done", "ERROR");
