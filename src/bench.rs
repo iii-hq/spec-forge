@@ -1,8 +1,9 @@
+#![allow(dead_code)]
+
 use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
 
 mod cache;
-mod parser;
 mod prompt;
 mod types;
 mod validate;

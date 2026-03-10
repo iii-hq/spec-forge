@@ -1,5 +1,4 @@
 mod cache;
-mod diff;
 mod limiter;
 mod prompt;
 mod semantic;
@@ -420,48 +419,53 @@ async fn generate_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (
     }))
 }
 
+fn apply_patch(spec: &mut UISpec, patch: &Value) {
+    let op = patch["op"].as_str().unwrap_or("");
+    let path = patch["path"].as_str().unwrap_or("");
+
+    match (op, path) {
+        ("add", "/root") | ("replace", "/root") => {
+            if let Some(val) = patch["value"].as_str() {
+                spec.root = val.to_string();
+            }
+        }
+        ("add", p) | ("replace", p) if p.starts_with("/elements/") => {
+            let key = p.strip_prefix("/elements/").unwrap_or("");
+            if !key.is_empty() {
+                if let Ok(el) = serde_json::from_value::<UIElement>(patch["value"].clone()) {
+                    spec.elements.insert(key.to_string(), el);
+                }
+            }
+        }
+        ("remove", p) if p.starts_with("/elements/") => {
+            let key = p.strip_prefix("/elements/").unwrap_or("");
+            spec.elements.remove(key);
+        }
+        _ => {}
+    }
+}
+
+fn parse_jsonl_to_patches(raw: &str) -> Vec<Value> {
+    raw.lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() || !line.starts_with('{') {
+                return None;
+            }
+            serde_json::from_str(line).ok()
+        })
+        .collect()
+}
+
 fn parse_jsonl_patches(raw: &str) -> Result<(Vec<Value>, UISpec), String> {
-    let mut patches = Vec::new();
+    let patches = parse_jsonl_to_patches(raw);
     let mut spec = UISpec {
         root: String::new(),
         elements: HashMap::new(),
     };
 
-    for line in raw.lines() {
-        let line = line.trim();
-        if line.is_empty() || !line.starts_with('{') {
-            continue;
-        }
-        let patch: Value = match serde_json::from_str(line) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-
-        let op = patch["op"].as_str().unwrap_or("");
-        let path = patch["path"].as_str().unwrap_or("");
-
-        match (op, path) {
-            ("add", "/root") | ("replace", "/root") => {
-                if let Some(val) = patch["value"].as_str() {
-                    spec.root = val.to_string();
-                }
-            }
-            ("add", p) | ("replace", p) if p.starts_with("/elements/") => {
-                let key = p.strip_prefix("/elements/").unwrap_or("");
-                if !key.is_empty() {
-                    if let Ok(el) = serde_json::from_value::<UIElement>(patch["value"].clone()) {
-                        spec.elements.insert(key.to_string(), el);
-                    }
-                }
-            }
-            ("remove", p) if p.starts_with("/elements/") => {
-                let key = p.strip_prefix("/elements/").unwrap_or("");
-                spec.elements.remove(key);
-            }
-            _ => {}
-        }
-
-        patches.push(patch);
+    for patch in &patches {
+        apply_patch(&mut spec, patch);
     }
 
     if spec.root.is_empty() {
@@ -491,44 +495,11 @@ async fn refine_core(s: &SharedState, req: RefineInput) -> Result<Value, (u16, V
         .await
         .map_err(|e| (502, json!({"error": format!("Claude API error: {}", e)})))?;
 
-    let mut patches = Vec::new();
+    let patches = parse_jsonl_to_patches(&raw);
     let mut new_spec = req.current_spec.clone();
 
-    for line in raw.lines() {
-        let line = line.trim();
-        if line.is_empty() || !line.starts_with('{') {
-            continue;
-        }
-        let patch: Value = match serde_json::from_str(line) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-
-        let op = patch["op"].as_str().unwrap_or("");
-        let path = patch["path"].as_str().unwrap_or("");
-
-        match (op, path) {
-            ("add", "/root") | ("replace", "/root") => {
-                if let Some(val) = patch["value"].as_str() {
-                    new_spec.root = val.to_string();
-                }
-            }
-            ("add", p) | ("replace", p) if p.starts_with("/elements/") => {
-                let key = p.strip_prefix("/elements/").unwrap_or("");
-                if !key.is_empty() {
-                    if let Ok(el) = serde_json::from_value::<UIElement>(patch["value"].clone()) {
-                        new_spec.elements.insert(key.to_string(), el);
-                    }
-                }
-            }
-            ("remove", p) if p.starts_with("/elements/") => {
-                let key = p.strip_prefix("/elements/").unwrap_or("");
-                new_spec.elements.remove(key);
-            }
-            _ => {}
-        }
-
-        patches.push(patch);
+    for patch in &patches {
+        apply_patch(&mut new_spec, patch);
     }
 
     if patches.is_empty() {
@@ -721,39 +692,7 @@ async fn call_claude_streaming(
                                     continue;
                                 }
                                 if let Ok(patch) = serde_json::from_str::<Value>(&jsonl_line) {
-                                    let op = patch["op"].as_str().unwrap_or("");
-                                    let path = patch["path"].as_str().unwrap_or("");
-
-                                    match (op, path) {
-                                        ("add", "/root") | ("replace", "/root") => {
-                                            if let Some(val) = patch["value"].as_str() {
-                                                spec.root = val.to_string();
-                                            }
-                                        }
-                                        ("add", p) | ("replace", p)
-                                            if p.starts_with("/elements/") =>
-                                        {
-                                            let key =
-                                                p.strip_prefix("/elements/").unwrap_or("");
-                                            if !key.is_empty() {
-                                                if let Ok(el) =
-                                                    serde_json::from_value::<UIElement>(
-                                                        patch["value"].clone(),
-                                                    )
-                                                {
-                                                    spec.elements
-                                                        .insert(key.to_string(), el);
-                                                }
-                                            }
-                                        }
-                                        ("remove", p) if p.starts_with("/elements/") => {
-                                            let key =
-                                                p.strip_prefix("/elements/").unwrap_or("");
-                                            spec.elements.remove(key);
-                                        }
-                                        _ => {}
-                                    }
-
+                                    apply_patch(&mut spec, &patch);
                                     let msg = json!({"type": "patch", "patch": patch});
                                     writer.send_message(&msg.to_string()).await.ok();
                                 }
@@ -771,26 +710,10 @@ async fn call_claude_streaming(
         }
     }
 
-    if !token_buf.trim().is_empty() && token_buf.trim().starts_with('{') {
-        if let Ok(patch) = serde_json::from_str::<Value>(token_buf.trim()) {
-            let op = patch["op"].as_str().unwrap_or("");
-            let path = patch["path"].as_str().unwrap_or("");
-            match (op, path) {
-                ("add", "/root") | ("replace", "/root") => {
-                    if let Some(val) = patch["value"].as_str() {
-                        spec.root = val.to_string();
-                    }
-                }
-                ("add", p) | ("replace", p) if p.starts_with("/elements/") => {
-                    let key = p.strip_prefix("/elements/").unwrap_or("");
-                    if !key.is_empty() {
-                        if let Ok(el) = serde_json::from_value::<UIElement>(patch["value"].clone()) {
-                            spec.elements.insert(key.to_string(), el);
-                        }
-                    }
-                }
-                _ => {}
-            }
+    let remaining = token_buf.trim();
+    if !remaining.is_empty() && remaining.starts_with('{') {
+        if let Ok(patch) = serde_json::from_str::<Value>(remaining) {
+            apply_patch(&mut spec, &patch);
             let msg = json!({"type": "patch", "patch": patch});
             writer.send_message(&msg.to_string()).await.ok();
         }
@@ -889,21 +812,3 @@ async fn call_claude(
     Ok(full_text)
 }
 
-fn extract_json_from_response(text: &str) -> Option<String> {
-    let start = text.find('{')?;
-    let bytes = text[start..].as_bytes();
-    let mut depth = 0;
-    for (i, &b) in bytes.iter().enumerate() {
-        match b {
-            b'{' => depth += 1,
-            b'}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(text[start..start + i + 1].to_string());
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
