@@ -1,6 +1,6 @@
 # spec-forge
 
-Pure iii-sdk worker for [json-render](https://github.com/vercel-labs/json-render) UI generation — JSONL patch streaming, caching, rate limiting, and validation. No standalone HTTP server; all endpoints are iii functions with HTTP triggers served by the iii engine.
+Pure iii-sdk worker for [json-render](https://github.com/vercel-labs/json-render) UI and 3D scene generation — JSONL patch streaming, caching, rate limiting, and validation. Generates both 2D UI components and Three.js 3D scenes from natural language. No standalone HTTP server; all endpoints are iii functions with HTTP triggers served by the iii engine.
 
 ![spec-forge demo](demo/demo.gif)
 
@@ -26,6 +26,7 @@ spec-forge is a pure iii-sdk worker that streams JSONL patches (RFC 6902) throug
 | Output format | Full JSON response | JSONL patches (RFC 6902) |
 | Streaming | Vercel AI SDK `streamText` | iii Channels (WebSocket) |
 | First paint | After full LLM response | After first patch (~200ms) |
+| 3D scenes | Not supported | 43 Three.js components, live preview |
 | Cache | None | SHA-256 exact + TF-IDF semantic |
 | Repeat request | 3-5s LLM call | **0ms** cached |
 | Rate limiting | None | Token bucket + concurrency semaphore |
@@ -278,6 +279,34 @@ curl -X POST http://localhost:3111/spec-forge/refine \
   }'
 ```
 
+## 3D Scene Generation
+
+spec-forge supports generating Three.js 3D scenes using the same JSONL patch protocol. Use the `3d` or `3d-product` catalog presets:
+
+```bash
+curl -X POST http://localhost:3111/spec-forge/stream \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "A product showroom with a metallic sphere on a reflective floor", "catalog_preset": "3d"}'
+```
+
+The 3D catalog includes 43 components:
+
+| Category | Components |
+|----------|-----------|
+| Geometry | Box, Sphere, Cylinder, Cone, Torus, Plane, Capsule, TorusKnot, RoundedBox |
+| Lights | AmbientLight, DirectionalLight, PointLight, SpotLight |
+| Special Materials | GlassSphere, GlassBox, DistortSphere |
+| Environment | Environment, Fog, GridHelper |
+| Particles | Sparkles, Stars, Sky, Cloud |
+| Shadows & Reflection | ContactShadows, Float, ReflectorPlane, Backdrop |
+| Animation | WarpTunnel, Spin, Orbit, Pulse, CameraShake |
+| Portals | MeshPortalMaterial, HtmlLabel |
+| Post-Processing | EffectComposer, Bloom, Glitch, Vignette |
+| Camera & Controls | PerspectiveCamera, OrbitControls |
+| Structure | Group, Model, Text3D |
+
+The demo playground renders 3D specs live using Three.js with PBR materials, environment mapping, and bloom post-processing.
+
 ## Demo Playground
 
 The `demo/index.html` playground connects to the iii engine and provides:
@@ -286,17 +315,20 @@ The `demo/index.html` playground connects to the iii engine and provides:
 - **STREAM tab** — real-time log of WebSocket patch messages
 - **LIVE RENDER** — progressive rendering as patches arrive via WebSocket
 - **STATIC CODE** — copy-pasteable React code using `@anthropic-ai/json-render-react`
-- **Catalog drawer** — 4 presets (dashboard, form, ecommerce, minimal) with editable JSON
+- **Catalog drawer** — 6 presets (dashboard, form, ecommerce, minimal, 3d, 3d-product) with editable JSON
+- **3D Live Preview** — Three.js renderer with PBR materials, environment maps, post-processing (bloom), and auto-rotating camera
 - **Refine** — iteratively modify existing specs without full regeneration
 
 ### Component Presets
 
 | Preset | Components |
 |--------|-----------|
-| Dashboard | Stack, Card, Grid, Heading, Metric, Table, Button, Text, Badge, Divider, Input |
+| Dashboard | Stack, Card, Grid, Heading, Metric, Table, Chart, Button, Text, Badge, Divider, Input |
 | Form | Stack, Card, Heading, Input, Textarea, Select, Checkbox, Radio, Button, Text, Divider, Badge |
 | Ecommerce | Stack, Grid, Card, Heading, Image, Text, Button, Metric, Badge, Divider, List |
-| Minimal | Stack, Card, Heading, Text, Button |
+| Minimal | Stack, Card, Heading, Text, Button, Input |
+| 3D | 43 Three.js components across 11 categories (geometry, lights, cameras, controls, effects, environment, animation, helpers, advanced, portals, post-processing) |
+| 3D Product | Subset optimized for product visualization (sphere, floor, studio lighting, bloom) |
 
 ## Architecture
 
@@ -333,8 +365,9 @@ src/
 ├── cache.rs       # SHA-256 exact cache with TTL (DashMap)
 ├── semantic.rs    # TF-IDF cosine similarity cache for fuzzy prompt matching
 ├── limiter.rs     # Rate limiter (token bucket + concurrency semaphore)
-├── validate.rs    # Spec validation against component catalog
-├── prompt.rs      # LLM prompt builder (JSONL/RFC 6902 format)
+├── validate.rs    # Spec validation against component catalog (UI + 3D)
+├── prompt.rs      # LLM prompt builder (UI + 3D scene modes)
+├── catalogs.rs    # 6 catalog presets (4 UI + 2 3D with 43 Three.js components)
 └── bench.rs       # Benchmark binary
 demo/
 ├── index.html     # Self-contained playground with WebSocket streaming
@@ -363,7 +396,7 @@ client/
 cargo test
 ```
 
-27 tests: cache (4), semantic (7), limiter (5), validate (6), prompt (5).
+39 tests: cache (4), semantic (7), limiter (5), validate (12), prompt (11).
 
 ## Configuration
 

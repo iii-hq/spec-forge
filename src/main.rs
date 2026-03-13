@@ -1,4 +1,5 @@
 mod cache;
+mod catalogs;
 mod limiter;
 mod prompt;
 mod semantic;
@@ -37,8 +38,34 @@ struct RefineInput {
     current_spec: UISpec,
     #[serde(default)]
     catalog: Catalog,
+    #[serde(default)]
+    catalog_preset: Option<String>,
     #[serde(default = "types::default_model")]
     model: String,
+}
+
+fn resolve_catalog(catalog: &Catalog, preset: &Option<String>) -> Result<Catalog, (u16, Value)> {
+    if let Some(name) = preset {
+        catalogs::get_preset(name).ok_or_else(|| {
+            (
+                400,
+                json!({
+                    "error": format!("Unknown catalog preset: '{}'", name),
+                    "available": catalogs::list_presets(),
+                }),
+            )
+        })
+    } else if catalog.components.is_empty() {
+        Err((
+            400,
+            json!({
+                "error": "No catalog provided. Send 'catalog' object or 'catalog_preset' name.",
+                "available_presets": catalogs::list_presets(),
+            }),
+        ))
+    } else {
+        Ok(catalog.clone())
+    }
 }
 
 #[tokio::main]
@@ -76,15 +103,17 @@ async fn main() {
 
     println!("spec-forge worker connected to {engine_url}");
     println!();
-    println!("  iii functions (7) + HTTP triggers (port 3111):");
+    println!("  iii functions (8) + HTTP triggers (port 3111):");
     println!("    POST /spec-forge/generate  — cache → Claude → validate");
     println!("    POST /spec-forge/stream    — real-time patches via iii Channel (WebSocket)");
     println!("    POST /spec-forge/refine    — patch-based diff");
     println!("    POST /spec-forge/validate  — catalog validation");
     println!("    POST /spec-forge/prompt    — preview LLM prompt");
+    println!("    GET  /spec-forge/catalogs  — built-in presets (3d, dashboard, form, ...)");
     println!("    GET  /spec-forge/stats     — metrics");
     println!("    GET  /spec-forge/health    — liveness");
     println!();
+    println!("  Catalog presets: {:?}", catalogs::list_presets());
     println!("  Demo: open demo/index.html in browser");
 
     tokio::signal::ctrl_c().await.ok();
@@ -173,12 +202,18 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
         |input| async move {
             let req: ApiRequest<GenerateRequest> = serde_json::from_value(input)
                 .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
-            let body = prompt_core(&req.body.prompt, &req.body.catalog);
-            Ok(serde_json::to_value(ApiResponse {
-                status_code: 200,
-                headers: json_headers(),
-                body,
-            })?)
+            match prompt_core(&req.body.prompt, &req.body.catalog, &req.body.catalog_preset) {
+                Ok(body) => Ok(serde_json::to_value(ApiResponse {
+                    status_code: 200,
+                    headers: json_headers(),
+                    body,
+                })?),
+                Err((code, body)) => Ok(serde_json::to_value(ApiResponse {
+                    status_code: code,
+                    headers: json_headers(),
+                    body,
+                })?),
+            }
         },
     );
 
@@ -239,10 +274,48 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
         },
     );
 
+    iii.register_function_with_description(
+        "api::get::spec-forge::catalogs",
+        "List available built-in catalog presets (minimal, dashboard, form, ecommerce, 3d, 3d-product)",
+        |input| async move {
+            let req: ApiRequest = serde_json::from_value(input)
+                .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
+            let name = req.path_params.get("name").map(|s| s.as_str());
+            let body = match name {
+                Some(n) => {
+                    if let Some(catalog) = catalogs::get_preset(n) {
+                        json!({ "name": n, "catalog": catalog, "component_count": catalog.components.len() })
+                    } else {
+                        return Ok(serde_json::to_value(ApiResponse {
+                            status_code: 404,
+                            headers: json_headers(),
+                            body: json!({"error": format!("Unknown preset: '{}'", n), "available": catalogs::list_presets()}),
+                        })?);
+                    }
+                }
+                None => {
+                    let presets: Vec<Value> = catalogs::list_presets()
+                        .iter()
+                        .map(|name| {
+                            let cat = catalogs::get_preset(name).unwrap();
+                            json!({"name": name, "component_count": cat.components.len()})
+                        })
+                        .collect();
+                    json!({"presets": presets})
+                }
+            };
+            Ok(serde_json::to_value(ApiResponse {
+                status_code: 200,
+                headers: json_headers(),
+                body,
+            })?)
+        },
+    );
+
     iii.register_service(
         "spec-forge",
         Some(
-            "Rust generation server for json-render — caching, streaming, rate limiting, spec diffing"
+            "Rust generation server for json-render — caching, streaming, rate limiting, spec diffing, 3D scene support"
                 .into(),
         ),
     );
@@ -292,6 +365,18 @@ fn register_http_triggers(iii: &III) {
             "POST",
             "Stream patches via iii Channel (WebSocket)",
         ),
+        (
+            "api::get::spec-forge::catalogs",
+            "spec-forge/catalogs",
+            "GET",
+            "List available catalog presets",
+        ),
+        (
+            "api::get::spec-forge::catalogs",
+            "spec-forge/catalogs/:name",
+            "GET",
+            "Get a specific catalog preset by name",
+        ),
     ];
 
     for (function_id, api_path, method, description) in triggers {
@@ -312,7 +397,8 @@ fn register_http_triggers(iii: &III) {
 
 async fn generate_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (u16, Value)> {
     let start = std::time::Instant::now();
-    let catalog_json = serde_json::to_string(&req.catalog).unwrap();
+    let catalog = resolve_catalog(&req.catalog, &req.catalog_preset)?;
+    let catalog_json = serde_json::to_string(&catalog).unwrap();
     let key = SpecCache::cache_key(&req.prompt, &catalog_json);
 
     if let Some(spec) = s.cache.get(&key) {
@@ -357,10 +443,10 @@ async fn generate_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (
         .await
         .map_err(|e| (429, json!({"error": format!("Rate limited: {}", e)})))?;
 
-    let llm_prompt = prompt::build_prompt(&req.prompt, &req.catalog);
+    let llm_prompt = prompt::build_prompt(&req.prompt, &catalog);
     tracing::info!("Calling Claude ({})...", req.model);
 
-    let raw = call_claude(&s.http, &s.api_key, &req.model, &llm_prompt)
+    let raw = call_claude(&s.http, &s.api_key, &req.model, &llm_prompt, req.max_tokens)
         .await
         .map_err(|e| (502, json!({"error": format!("Claude API error: {}", e)})))?;
 
@@ -371,7 +457,7 @@ async fn generate_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (
         )
     })?;
 
-    let errors = validate::validate_spec(&spec, &req.catalog);
+    let errors = validate::validate_spec(&spec, &catalog);
     if !errors.is_empty() {
         return Err((
             422,
@@ -386,24 +472,32 @@ async fn generate_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (
     s.semantic.store(&req.prompt, &catalog_hash, key);
 
     let elapsed = start.elapsed().as_millis() as u64;
+    let is_3d = catalog.components.contains_key("PerspectiveCamera")
+        && catalog.components.contains_key("AmbientLight");
+    let metric_key = if is_3d {
+        "spec-forge::metrics::generate_3d"
+    } else {
+        "spec-forge::metrics::generate"
+    };
     s.streams
-        .increment("spec-forge::metrics::generate", "count", 1)
+        .increment(metric_key, "count", 1)
         .await
         .ok();
     s.streams
-        .increment("spec-forge::metrics::generate", "total_ms", elapsed as i64)
+        .increment(metric_key, "total_ms", elapsed as i64)
         .await
         .ok();
     s.streams
         .increment(
-            "spec-forge::metrics::generate",
+            metric_key,
             "total_patches",
             patches.len() as i64,
         )
         .await
         .ok();
     tracing::info!(
-        "Generated in {}ms, {} patches, {} elements",
+        "Generated {}in {}ms, {} patches, {} elements",
+        if is_3d { "3D scene " } else { "" },
         elapsed,
         patches.len(),
         spec.elements.len()
@@ -479,6 +573,7 @@ fn parse_jsonl_patches(raw: &str) -> Result<(Vec<Value>, UISpec), String> {
 
 async fn refine_core(s: &SharedState, req: RefineInput) -> Result<Value, (u16, Value)> {
     let start = std::time::Instant::now();
+    let catalog = resolve_catalog(&req.catalog, &req.catalog_preset)?;
 
     let _guard = s
         .limiter
@@ -487,10 +582,10 @@ async fn refine_core(s: &SharedState, req: RefineInput) -> Result<Value, (u16, V
         .map_err(|e| (429, json!({"error": format!("Rate limited: {}", e)})))?;
 
     let llm_prompt =
-        prompt::build_refine_prompt(&req.prompt, &req.current_spec, &req.catalog);
+        prompt::build_refine_prompt(&req.prompt, &req.current_spec, &catalog);
     tracing::info!("Calling Claude for refine ({})...", req.model);
 
-    let raw = call_claude(&s.http, &s.api_key, &req.model, &llm_prompt)
+    let raw = call_claude(&s.http, &s.api_key, &req.model, &llm_prompt, 4096)
         .await
         .map_err(|e| (502, json!({"error": format!("Claude API error: {}", e)})))?;
 
@@ -508,7 +603,7 @@ async fn refine_core(s: &SharedState, req: RefineInput) -> Result<Value, (u16, V
         ));
     }
 
-    let errors = validate::validate_spec(&new_spec, &req.catalog);
+    let errors = validate::validate_spec(&new_spec, &catalog);
     if !errors.is_empty() {
         return Err((
             422,
@@ -543,12 +638,14 @@ fn validate_core(spec: &UISpec, catalog: &Catalog) -> Value {
     })
 }
 
-fn prompt_core(prompt_text: &str, catalog: &Catalog) -> Value {
-    json!({ "prompt": prompt::build_prompt(prompt_text, catalog) })
+fn prompt_core(prompt_text: &str, catalog: &Catalog, catalog_preset: &Option<String>) -> Result<Value, (u16, Value)> {
+    let resolved = resolve_catalog(catalog, catalog_preset)?;
+    Ok(json!({ "prompt": prompt::build_prompt(prompt_text, &resolved) }))
 }
 
 async fn stream_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (u16, Value)> {
-    let catalog_json = serde_json::to_string(&req.catalog).unwrap();
+    let catalog = resolve_catalog(&req.catalog, &req.catalog_preset)?;
+    let catalog_json = serde_json::to_string(&catalog).unwrap();
     let key = SpecCache::cache_key(&req.prompt, &catalog_json);
 
     if let Some(spec) = s.cache.get(&key) {
@@ -580,8 +677,9 @@ async fn stream_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (u1
     let http = s.http.clone();
     let api_key = s.api_key.clone();
     let model = req.model.clone();
-    let prompt_text = prompt::build_prompt(&req.prompt, &req.catalog);
-    let catalog = req.catalog.clone();
+    let prompt_text = prompt::build_prompt(&req.prompt, &catalog);
+    let catalog = catalog.clone();
+    let max_tokens = req.max_tokens;
     let cache = s.cache.clone();
     let semantic = s.semantic.clone();
     let streams = s.streams.clone();
@@ -590,7 +688,7 @@ async fn stream_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (u1
 
     tokio::spawn(async move {
         let start = std::time::Instant::now();
-        match call_claude_streaming(&http, &api_key, &model, &prompt_text, &writer).await {
+        match call_claude_streaming(&http, &api_key, &model, &prompt_text, &writer, max_tokens).await {
             Ok(spec) => {
                 let errors = validate::validate_spec(&spec, &catalog);
                 let elapsed = start.elapsed().as_millis() as u64;
@@ -632,10 +730,11 @@ async fn call_claude_streaming(
     model: &str,
     prompt_text: &str,
     writer: &iii_sdk::channels::ChannelWriter,
+    max_tokens: u32,
 ) -> Result<UISpec, String> {
     let body = json!({
         "model": model,
-        "max_tokens": 2048,
+        "max_tokens": max_tokens,
         "stream": true,
         "messages": [{"role": "user", "content": prompt_text}]
     });
@@ -745,10 +844,11 @@ async fn call_claude(
     api_key: &str,
     model: &str,
     prompt_text: &str,
+    max_tokens: u32,
 ) -> Result<String, String> {
     let body = json!({
         "model": model,
-        "max_tokens": 2048,
+        "max_tokens": max_tokens,
         "stream": true,
         "messages": [{"role": "user", "content": prompt_text}]
     });

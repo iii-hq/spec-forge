@@ -6,6 +6,14 @@
 <title>spec-forge | iii</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
+  }
+}
+</script>
 <style>
   :root {
     --black: #000000;
@@ -141,7 +149,7 @@
 
   /* HERO */
   .hero {
-    padding: 140px 32px 80px;
+    padding: 120px 32px 48px;
     text-align: center;
     max-width: 900px;
     margin: 0 auto;
@@ -268,7 +276,7 @@
   section {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 80px 32px;
+    padding: 56px 32px;
   }
 
   .section-label {
@@ -284,7 +292,7 @@
   .steps {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 48px;
+    gap: 32px;
   }
 
   .step-num {
@@ -312,20 +320,20 @@
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    margin-top: 40px;
+    gap: 8px;
+    margin-top: 32px;
     max-width: 700px;
     margin-left: auto;
     margin-right: auto;
   }
 
   .checklist li {
-    font-size: 14px;
+    font-size: 13px;
     color: var(--light);
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    line-height: 1.5;
+    gap: 10px;
+    line-height: 1.4;
   }
 
   .check-icon {
@@ -359,11 +367,11 @@
   }
 
   .code-block-body {
-    padding: 16px;
-    font-size: 12px;
-    line-height: 1.7;
+    padding: 12px 16px;
+    font-size: 11px;
+    line-height: 1.5;
     overflow-x: auto;
-    max-height: 320px;
+    max-height: 220px;
     overflow-y: auto;
     color: var(--light2);
   }
@@ -375,14 +383,14 @@
 
   /* PLAYGROUND */
   .playground-section {
-    padding: 80px 32px;
+    padding: 56px 32px;
     max-width: 1400px;
     margin: 0 auto;
   }
 
   .playground-header {
     text-align: center;
-    margin-bottom: 40px;
+    margin-bottom: 24px;
   }
 
   .playground-header h2 {
@@ -454,13 +462,14 @@
   .pg-panels {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    min-height: 520px;
+    height: 520px;
   }
 
   .pg-panel {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    min-height: 0;
   }
 
   .pg-panel:first-child { border-right: 1px solid var(--medium-dark); }
@@ -542,7 +551,9 @@
   .pg-body {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     background: var(--black);
+    min-height: 0;
   }
 
   .json-view {
@@ -581,7 +592,8 @@
     color: var(--accent);
   }
 
-  .preview-view { padding: 24px; }
+  .preview-view { padding: 24px; overflow: hidden; position: relative; }
+  .preview-view canvas { display: block; width: 100% !important; height: 100% !important; }
 
   .preview-empty {
     display: flex;
@@ -950,6 +962,16 @@
   @keyframes streamIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
   .stream-in { animation: streamIn 0.25s ease-out; }
 
+  .example-chip-3d {
+    border-color: var(--accent-mid) !important;
+    color: var(--accent) !important;
+  }
+
+  .example-chip-3d:hover {
+    background: var(--accent-dim) !important;
+    border-color: var(--accent) !important;
+  }
+
   @media (max-width: 768px) {
     .steps { grid-template-columns: 1fr; gap: 32px; }
     .code-grid { grid-template-columns: 1fr; }
@@ -987,28 +1009,49 @@
 
 <!-- HERO -->
 <div class="hero">
-  <div class="hero-label">The production layer for generative UI</div>
+  <div class="hero-label">The production engine for json-render</div>
   <h1>
-    <span class="yellow">One Forge.</span><br>
-    <span class="dim">cache</span> any <span class="yellow">spec.</span>
+    <span class="yellow">Prompt &rarr; UI.</span><br>
+    <span class="dim">2D and</span> <span class="yellow">3D.</span> <span class="dim">Cached.</span>
   </h1>
   <p class="hero-sub">
-    Rust generation server for json-render. Caching, streaming,
-    rate limiting, and spec diffing so you never call the LLM twice
-    for the same UI.
+    Rust-powered spec generation for json-render. 43 Three.js 3D components,
+    6 catalog presets, SHA-256 + semantic caching, JSONL patch streaming.
+    <strong style="color:var(--accent)">0ms repeat requests.</strong>
   </p>
   <div class="hero-actions">
-    <a href="#playground" class="btn btn-accent">Playground</a>
+    <a href="#playground" class="btn btn-accent">Try the Playground</a>
     <a href="https://github.com/iii-hq/spec-forge" class="btn btn-outline">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
       GitHub
     </a>
   </div>
 
+  <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-top:28px">
+    <div style="text-align:center;padding:16px 24px;border:1px solid var(--medium-dark);border-radius:8px;background:var(--dark2);min-width:140px">
+      <div style="font-size:28px;font-weight:800;color:var(--accent)">0 ms</div>
+      <div style="font-size:11px;color:var(--light3);margin-top:4px">cached response</div>
+    </div>
+    <div style="text-align:center;padding:16px 24px;border:1px solid var(--medium-dark);border-radius:8px;background:var(--dark2);min-width:140px">
+      <div style="font-size:28px;font-weight:800;color:var(--accent)">43</div>
+      <div style="font-size:11px;color:var(--light3);margin-top:4px">3D components</div>
+    </div>
+    <div style="text-align:center;padding:16px 24px;border:1px solid var(--medium-dark);border-radius:8px;background:var(--dark2);min-width:140px">
+      <div style="font-size:28px;font-weight:800;color:var(--accent)">6</div>
+      <div style="font-size:11px;color:var(--light3);margin-top:4px">catalog presets</div>
+    </div>
+    <div style="text-align:center;padding:16px 24px;border:1px solid var(--medium-dark);border-radius:8px;background:var(--dark2);min-width:140px">
+      <div style="font-size:28px;font-weight:800;color:var(--accent)">&lt;1 ms</div>
+      <div style="font-size:11px;color:var(--light3);margin-top:4px">cold overhead</div>
+    </div>
+  </div>
+
   <ul class="checklist">
+    <li><span class="check-icon">&#10003;</span> <strong>3D scene generation</strong> &mdash; Three.js / React Three Fiber, matching json-render v0.13.0</li>
     <li><span class="check-icon">&#10003;</span> SHA-256 exact + TF-IDF semantic caching &mdash; repeat requests return in 0ms</li>
-    <li><span class="check-icon">&#10003;</span> Incremental JSON parser &mdash; elements stream live as Claude generates</li>
-    <li><span class="check-icon">&#10003;</span> Patch-based updates &mdash; refine UI without full regeneration</li>
+    <li><span class="check-icon">&#10003;</span> JSONL patch streaming via iii Channels &mdash; elements appear live as Claude generates</li>
+    <li><span class="check-icon">&#10003;</span> Patch-based refinement &mdash; edit existing specs without full regeneration</li>
+    <li><span class="check-icon">&#10003;</span> Built-in presets &mdash; dashboard, form, ecommerce, 3D scene, 3D product</li>
     <li><span class="check-icon">&#10003;</span> Rate limiting + API key server-side &mdash; safe for production</li>
   </ul>
 </div>
@@ -1041,39 +1084,18 @@
 
 <!-- CODE EXAMPLES -->
 <section>
+  <div style="text-align:center;margin-bottom:24px">
+    <div class="section-label" style="margin-bottom:8px">Examples</div>
+    <h2 style="font-size:28px;font-weight:800;letter-spacing:-0.03em;margin-bottom:8px">One format, any interface</h2>
+    <p style="font-size:14px;color:var(--light2)">Same spec format powers 2D UIs and 3D scenes. Just swap the catalog.</p>
+  </div>
   <div class="code-grid">
     <div>
-      <div class="section-label">Input</div>
-      <h3 style="font-size:20px;font-weight:700;margin-bottom:6px;letter-spacing:-0.02em">Define your catalog</h3>
-      <p style="font-size:13px;color:var(--light2);margin-bottom:16px">Components, actions, constraints.</p>
-      <div class="code-block">
-        <div class="code-block-header">catalog.json</div>
-        <div class="code-block-body"><span class="j-key">"components"</span>: {
-  <span class="j-key">"Card"</span>: {
-    <span class="j-key">"description"</span>: <span class="j-str">"Container card"</span>,
-    <span class="j-key">"children"</span>: <span class="j-bool">true</span>
-  },
-  <span class="j-key">"Input"</span>: {
-    <span class="j-key">"description"</span>: <span class="j-str">"Text input"</span>,
-    <span class="j-key">"props"</span>: {
-      <span class="j-key">"placeholder"</span>: <span class="j-str">"string"</span>,
-      <span class="j-key">"type"</span>: <span class="j-str">"string"</span>
-    }
-  },
-  <span class="j-key">"Button"</span>: {
-    <span class="j-key">"description"</span>: <span class="j-str">"Clickable button"</span>,
-    <span class="j-key">"props"</span>: {
-      <span class="j-key">"label"</span>: <span class="j-str">"string"</span>,
-      <span class="j-key">"variant"</span>: <span class="j-str">"primary|secondary"</span>
-    }
-  }
-}</div>
-      </div>
-    </div>
-    <div>
-      <div class="section-label">Output</div>
-      <h3 style="font-size:20px;font-weight:700;margin-bottom:6px;letter-spacing:-0.02em">AI generates JSON</h3>
-      <p style="font-size:13px;color:var(--light2);margin-bottom:16px">Constrained output your components render.</p>
+      <h3 style="font-size:16px;font-weight:700;margin-bottom:6px;letter-spacing:-0.02em;display:flex;align-items:center;gap:8px">
+        <span style="padding:3px 8px;border-radius:var(--radius);font-size:10px;font-weight:700;background:rgba(88,101,242,0.15);color:var(--primary-light);letter-spacing:0.5px">UI</span>
+        Login form
+      </h3>
+      <p style="font-size:12px;color:var(--light3);margin-bottom:12px">catalog_preset: "form"</p>
       <div class="code-block">
         <div class="code-block-header">spec.json</div>
         <div class="code-block-body">{
@@ -1082,21 +1104,61 @@
     <span class="j-key">"card-1"</span>: {
       <span class="j-key">"type"</span>: <span class="j-str">"Card"</span>,
       <span class="j-key">"props"</span>: { <span class="j-key">"title"</span>: <span class="j-str">"Login"</span> },
-      <span class="j-key">"children"</span>: [<span class="j-str">"input-1"</span>, <span class="j-str">"btn-1"</span>]
+      <span class="j-key">"children"</span>: [<span class="j-str">"email"</span>, <span class="j-str">"pass"</span>, <span class="j-str">"btn"</span>]
     },
-    <span class="j-key">"input-1"</span>: {
+    <span class="j-key">"email"</span>: {
       <span class="j-key">"type"</span>: <span class="j-str">"Input"</span>,
+      <span class="j-key">"props"</span>: { <span class="j-key">"label"</span>: <span class="j-str">"Email"</span>, <span class="j-key">"type"</span>: <span class="j-str">"email"</span> }
+    },
+    <span class="j-key">"pass"</span>: {
+      <span class="j-key">"type"</span>: <span class="j-str">"Input"</span>,
+      <span class="j-key">"props"</span>: { <span class="j-key">"label"</span>: <span class="j-str">"Password"</span>, <span class="j-key">"type"</span>: <span class="j-str">"password"</span> }
+    },
+    <span class="j-key">"btn"</span>: {
+      <span class="j-key">"type"</span>: <span class="j-str">"Button"</span>,
+      <span class="j-key">"props"</span>: { <span class="j-key">"label"</span>: <span class="j-str">"Sign In"</span>, <span class="j-key">"variant"</span>: <span class="j-str">"primary"</span> }
+    }
+  }
+}</div>
+      </div>
+    </div>
+    <div>
+      <h3 style="font-size:16px;font-weight:700;margin-bottom:6px;letter-spacing:-0.02em;display:flex;align-items:center;gap:8px">
+        <span style="padding:3px 8px;border-radius:var(--radius);font-size:10px;font-weight:700;background:var(--accent-dim);color:var(--accent);letter-spacing:0.5px">3D</span>
+        Product showroom
+      </h3>
+      <p style="font-size:12px;color:var(--light3);margin-bottom:12px">catalog_preset: "3d-product"</p>
+      <div class="code-block">
+        <div class="code-block-header">spec.json</div>
+        <div class="code-block-body">{
+  <span class="j-key">"root"</span>: <span class="j-str">"scene"</span>,
+  <span class="j-key">"elements"</span>: {
+    <span class="j-key">"scene"</span>: {
+      <span class="j-key">"type"</span>: <span class="j-str">"Group"</span>,
+      <span class="j-key">"children"</span>: [<span class="j-str">"cam"</span>, <span class="j-str">"env"</span>, <span class="j-str">"sphere"</span>, <span class="j-str">"effects"</span>]
+    },
+    <span class="j-key">"cam"</span>: {
+      <span class="j-key">"type"</span>: <span class="j-str">"PerspectiveCamera"</span>,
+      <span class="j-key">"props"</span>: { <span class="j-key">"position"</span>: [<span class="j-num">5</span>,<span class="j-num">3</span>,<span class="j-num">5</span>], <span class="j-key">"fov"</span>: <span class="j-num">45</span> }
+    },
+    <span class="j-key">"env"</span>: {
+      <span class="j-key">"type"</span>: <span class="j-str">"Environment"</span>,
+      <span class="j-key">"props"</span>: { <span class="j-key">"preset"</span>: <span class="j-str">"studio"</span> }
+    },
+    <span class="j-key">"sphere"</span>: {
+      <span class="j-key">"type"</span>: <span class="j-str">"Sphere"</span>,
       <span class="j-key">"props"</span>: {
-        <span class="j-key">"placeholder"</span>: <span class="j-str">"Email"</span>,
-        <span class="j-key">"type"</span>: <span class="j-str">"email"</span>
+        <span class="j-key">"radius"</span>: <span class="j-num">1</span>,
+        <span class="j-key">"material"</span>: { <span class="j-key">"color"</span>: <span class="j-str">"#4488ff"</span>, <span class="j-key">"metalness"</span>: <span class="j-num">0.9</span> }
       }
     },
-    <span class="j-key">"btn-1"</span>: {
-      <span class="j-key">"type"</span>: <span class="j-str">"Button"</span>,
-      <span class="j-key">"props"</span>: {
-        <span class="j-key">"label"</span>: <span class="j-str">"Sign In"</span>,
-        <span class="j-key">"variant"</span>: <span class="j-str">"primary"</span>
-      }
+    <span class="j-key">"effects"</span>: {
+      <span class="j-key">"type"</span>: <span class="j-str">"EffectComposer"</span>,
+      <span class="j-key">"children"</span>: [<span class="j-str">"bloom"</span>]
+    },
+    <span class="j-key">"bloom"</span>: {
+      <span class="j-key">"type"</span>: <span class="j-str">"Bloom"</span>,
+      <span class="j-key">"props"</span>: { <span class="j-key">"intensity"</span>: <span class="j-num">0.5</span> }
     }
   }
 }</div>
@@ -1104,8 +1166,6 @@
     </div>
   </div>
 </section>
-
-<hr class="divider">
 
 <!-- PLAYGROUND -->
 <div class="playground-section" id="playground">
@@ -1117,7 +1177,7 @@
 
   <div class="playground">
     <div class="pg-toolbar">
-      <input type="text" id="prompt" placeholder="Describe a UI..." value="A dashboard with three metric cards showing revenue, users, and orders, plus a data table below" />
+      <input type="text" id="prompt" placeholder="Describe a UI or 3D scene..." value="A dashboard with three metric cards showing revenue, users, and orders, plus a data table below" />
       <button class="btn btn-sm btn-outline" onclick="toggleDrawer()">Catalog</button>
       <button class="btn btn-sm btn-outline" id="refineBtn" onclick="doRefine()" disabled>Refine</button>
       <button class="send-btn" id="streamBtn" onclick="doStream()" title="Stream (Enter)">
@@ -1125,11 +1185,16 @@
       </button>
     </div>
 
-    <div style="display:flex;gap:8px;padding:8px 16px;border-bottom:1px solid var(--medium-dark);background:var(--dark2)">
-      <div class="example-chip" onclick="setPrompt('Create a login form with email and password')">login form</div>
-      <div class="example-chip" onclick="setPrompt('Build a feedback form with rating stars')">feedback form</div>
-      <div class="example-chip" onclick="setPrompt('A dashboard with three metric cards and a data table')">dashboard</div>
-      <div class="example-chip" onclick="setPrompt('A product card with image, title, price, and add to cart button')">product card</div>
+    <div style="display:flex;gap:8px;padding:8px 16px;border-bottom:1px solid var(--medium-dark);background:var(--dark2);flex-wrap:wrap;align-items:center">
+      <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--light3);margin-right:4px">UI</span>
+      <div class="example-chip" onclick="setPrompt('Create a login form with email and password', 'form')">login form</div>
+      <div class="example-chip" onclick="setPrompt('A dashboard with three metric cards and a data table', 'dashboard')">dashboard</div>
+      <div class="example-chip" onclick="setPrompt('A product card with image, title, price, and add to cart button', 'ecommerce')">product card</div>
+      <span style="width:1px;height:20px;background:var(--medium);margin:0 4px"></span>
+      <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-right:4px">3D</span>
+      <div class="example-chip" style="border-color:var(--accent-mid);color:var(--accent)" onclick="setPrompt('A product showroom with a metallic sphere on a reflective floor, studio lighting, bloom glow, and auto-rotating camera', '3d-product')">product showroom</div>
+      <div class="example-chip" style="border-color:var(--accent-mid);color:var(--accent)" onclick="setPrompt('A deep space scene with a starfield, nebula clouds, floating asteroids, a planet with rings, and a glowing portal', '3d')">space scene</div>
+      <div class="example-chip" style="border-color:var(--accent-mid);color:var(--accent)" onclick="setPrompt('A floating sphere with studio lighting', '3d-product')">floating sphere</div>
     </div>
 
     <div class="pg-panels">
@@ -1221,15 +1286,70 @@
         <td><span class="dim">Client-side</span></td>
         <td><span class="val">Server-side only</span></td>
       </tr>
+      <tr>
+        <td>3D support</td>
+        <td><span class="dim">43 components (client-side)</span></td>
+        <td><span class="val">43 components + server presets + 3D-specific validation</span></td>
+      </tr>
+      <tr>
+        <td>Catalog presets</td>
+        <td><span class="dim">None</span></td>
+        <td><span class="val">6 built-in (dashboard, form, ecommerce, 3D, etc.)</span></td>
+      </tr>
     </tbody>
   </table>
 </section>
 
+<hr class="divider">
+
+<!-- FEATURES GRID -->
+<section>
+  <div style="text-align:center;margin-bottom:32px">
+    <div class="section-label" style="margin-bottom:12px">Features</div>
+    <h2 style="font-size:28px;font-weight:800;letter-spacing:-0.03em;margin-bottom:10px">Production-ready from day one</h2>
+    <p style="font-size:14px;color:var(--light2)">Everything json-render needs to go to production. Built in Rust on iii-engine.</p>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px">
+    <div style="padding:24px;border:1px solid var(--medium-dark);border-radius:var(--radius-lg);background:var(--dark2)">
+      <div style="font-size:24px;margin-bottom:12px">&#x1F9CA;</div>
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:8px;letter-spacing:-0.02em">3D Scene Generation</h3>
+      <p style="font-size:12px;color:var(--light2);line-height:1.6">43 Three.js components across 11 categories. Full React Three Fiber support.</p>
+    </div>
+    <div style="padding:24px;border:1px solid var(--medium-dark);border-radius:var(--radius-lg);background:var(--dark2)">
+      <div style="font-size:24px;margin-bottom:12px">&#x26A1;</div>
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:8px;letter-spacing:-0.02em">0ms Cached Responses</h3>
+      <p style="font-size:12px;color:var(--light2);line-height:1.6">SHA-256 exact + TF-IDF semantic caching. No wasted API calls.</p>
+    </div>
+    <div style="padding:24px;border:1px solid var(--medium-dark);border-radius:var(--radius-lg);background:var(--dark2)">
+      <div style="font-size:24px;margin-bottom:12px">&#x1F4E1;</div>
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:8px;letter-spacing:-0.02em">JSONL Patch Streaming</h3>
+      <p style="font-size:12px;color:var(--light2);line-height:1.6">Elements stream live via WebSocket channels.</p>
+    </div>
+    <div style="padding:24px;border:1px solid var(--medium-dark);border-radius:var(--radius-lg);background:var(--dark2)">
+      <div style="font-size:24px;margin-bottom:12px">&#x1F527;</div>
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:8px;letter-spacing:-0.02em">Patch-based Refinement</h3>
+      <p style="font-size:12px;color:var(--light2);line-height:1.6">Edit specs with add/replace/remove. No full regeneration.</p>
+    </div>
+    <div style="padding:24px;border:1px solid var(--medium-dark);border-radius:var(--radius-lg);background:var(--dark2)">
+      <div style="font-size:24px;margin-bottom:12px">&#x1F512;</div>
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:8px;letter-spacing:-0.02em">Rate Limiting + Server Keys</h3>
+      <p style="font-size:12px;color:var(--light2);line-height:1.6">Token bucket + concurrency semaphore. API key server-side.</p>
+    </div>
+    <div style="padding:24px;border:1px solid var(--medium-dark);border-radius:var(--radius-lg);background:var(--dark2)">
+      <div style="font-size:24px;margin-bottom:12px">&#x1F3AF;</div>
+      <h3 style="font-size:15px;font-weight:700;margin-bottom:8px;letter-spacing:-0.02em">6 Built-in Presets</h3>
+      <p style="font-size:12px;color:var(--light2);line-height:1.6">Dashboard, forms, ecommerce, minimal, 3D scene, 3D product.</p>
+    </div>
+  </div>
+</section>
+
 <!-- FOOTER -->
 <footer>
-  Built with Rust + Axum. Compatible with
-  <a href="https://github.com/vercel-labs/json-render">json-render</a>
-  renderers. Powered by <a href="https://iii.dev">iii</a>.
+  <div style="margin-bottom:8px;font-size:13px;color:var(--light2)">spec-forge</div>
+  Rust-powered production engine for
+  <a href="https://github.com/vercel-labs/json-render">json-render</a>.
+  Built on <a href="https://iii.dev">iii-engine</a>.
+  <div style="margin-top:12px;font-size:11px">2D UIs &middot; 3D scenes &middot; JSONL streaming &middot; 0ms caching</div>
 </footer>
 
 <!-- OVERLAYS -->
@@ -1242,10 +1362,12 @@
   <div class="drawer-body">
     <div class="drawer-label">Presets</div>
     <div class="catalog-presets">
-      <div class="preset-chip active" onclick="loadPreset('dashboard', this)">Dashboard</div>
-      <div class="preset-chip" onclick="loadPreset('form', this)">Forms</div>
-      <div class="preset-chip" onclick="loadPreset('ecommerce', this)">E-Commerce</div>
-      <div class="preset-chip" onclick="loadPreset('minimal', this)">Minimal</div>
+      <div class="preset-chip active" data-preset="dashboard" onclick="loadPreset('dashboard', this)">Dashboard</div>
+      <div class="preset-chip" data-preset="form" onclick="loadPreset('form', this)">Forms</div>
+      <div class="preset-chip" data-preset="ecommerce" onclick="loadPreset('ecommerce', this)">E-Commerce</div>
+      <div class="preset-chip" data-preset="minimal" onclick="loadPreset('minimal', this)">Minimal</div>
+      <div class="preset-chip" data-preset="3d" onclick="loadPreset('3d', this)" style="border-color:var(--accent);color:var(--accent)">3D Scene</div>
+      <div class="preset-chip" data-preset="3d-product" onclick="loadPreset('3d-product', this)" style="border-color:var(--accent);color:var(--accent)">3D Product</div>
     </div>
     <div class="drawer-label">Refine prompt</div>
     <input type="text" class="refine-input" id="refinePrompt" placeholder="e.g. Add a search bar at the top" />
@@ -1318,15 +1440,96 @@ const PRESETS = {
     },
     actions: {},
   },
+  "3d": {
+    components: {
+      Box: { description: "Box mesh (default 1x1x1)", props: { width: "number", height: "number", depth: "number", position: "[x,y,z]", rotation: "[x,y,z]", material: { color: "string", metalness: "number(0-1)", roughness: "number(0-1)" }, castShadow: "boolean" } },
+      Sphere: { description: "Sphere mesh", props: { radius: "number", position: "[x,y,z]", material: { color: "string", metalness: "number(0-1)", roughness: "number(0-1)", emissive: "string" }, castShadow: "boolean" } },
+      Cylinder: { description: "Cylinder mesh", props: { radiusTop: "number", radiusBottom: "number", height: "number", position: "[x,y,z]", material: { color: "string", metalness: "number(0-1)", roughness: "number(0-1)" } } },
+      Cone: { description: "Cone mesh", props: { radius: "number", height: "number", position: "[x,y,z]", material: { color: "string" } } },
+      Torus: { description: "Torus (donut) mesh", props: { radius: "number", tube: "number", position: "[x,y,z]", material: { color: "string", metalness: "number(0-1)" } } },
+      Plane: { description: "Flat plane mesh", props: { width: "number", height: "number", position: "[x,y,z]", rotation: "[x,y,z]", material: { color: "string" }, receiveShadow: "boolean" }, children: true },
+      Capsule: { description: "Capsule mesh", props: { radius: "number", length: "number", position: "[x,y,z]", material: { color: "string" } } },
+      TorusKnot: { description: "Intricate knot shape", props: { radius: "number", tube: "number", p: "number", q: "number", position: "[x,y,z]", material: { color: "string", metalness: "number(0-1)" } } },
+      RoundedBox: { description: "Box with rounded edges", props: { width: "number", height: "number", depth: "number", radius: "number", position: "[x,y,z]", material: { color: "string" } } },
+      AmbientLight: { description: "Uniform scene illumination", props: { color: "string", intensity: "number" } },
+      DirectionalLight: { description: "Sunlight-style light", props: { position: "[x,y,z]", intensity: "number", castShadow: "boolean" } },
+      PointLight: { description: "Point light source", props: { position: "[x,y,z]", intensity: "number", color: "string", distance: "number" } },
+      SpotLight: { description: "Cone of light", props: { position: "[x,y,z]", intensity: "number", angle: "number", penumbra: "number" } },
+      GlassSphere: { description: "Glass sphere with refraction", props: { radius: "number", position: "[x,y,z]", transmission: "number(0-1)", ior: "number", color: "string" } },
+      GlassBox: { description: "Glass cuboid", props: { width: "number", height: "number", depth: "number", position: "[x,y,z]", transmission: "number(0-1)" } },
+      DistortSphere: { description: "Animated liquid-metal sphere", props: { radius: "number", position: "[x,y,z]", speed: "number", distort: "number", color: "string" } },
+      Environment: { description: "HDRI environment map", props: { preset: "apartment|city|dawn|forest|lobby|night|park|studio|sunset|warehouse", background: "boolean", blur: "number(0-1)" } },
+      Fog: { description: "Linear fog effect", props: { color: "string", near: "number", far: "number" } },
+      GridHelper: { description: "Reference grid on XZ plane", props: { size: "number", divisions: "number", color: "string" } },
+      Sparkles: { description: "Floating particle sparkles", props: { count: "number", speed: "number", color: "string", size: "number" } },
+      Stars: { description: "Starfield background", props: { radius: "number", count: "number", factor: "number", fade: "boolean" } },
+      Sky: { description: "Procedural sky", props: { sunPosition: "[x,y,z]", rayleigh: "number", turbidity: "number" } },
+      Cloud: { description: "Volumetric cloud", props: { segments: "number", speed: "number", opacity: "number(0-1)", position: "[x,y,z]" } },
+      ContactShadows: { description: "Soft contact shadows", props: { opacity: "number(0-1)", blur: "number", position: "[x,y,z]" } },
+      Float: { description: "Floating animation wrapper", props: { speed: "number", rotationIntensity: "number", floatIntensity: "number" }, children: true },
+      ReflectorPlane: { description: "Mirror reflections plane", props: { mirror: "number(0-1)", blur: "[x,y]", resolution: "number", position: "[x,y,z]" } },
+      Backdrop: { description: "Curved studio backdrop", props: { floor: "number", segments: "number", receiveShadow: "boolean" }, children: true },
+      WarpTunnel: { description: "Neon tunnel flythrough", props: { ringCount: "number", radius: "number", speed: "number", color1: "string", color2: "string" } },
+      Spin: { description: "Continuous rotation", props: { speed: "number", axis: "x|y|z" }, children: true },
+      Orbit: { description: "Orbits children around Y axis", props: { speed: "number", radius: "number" }, children: true },
+      Pulse: { description: "Pulses scale min/max", props: { speed: "number", min: "number", max: "number" }, children: true },
+      CameraShake: { description: "Camera vibration", props: { intensity: "number", maxYaw: "number", maxPitch: "number" } },
+      MeshPortalMaterial: { description: "Portal surface", props: { blend: "number(0-1)", blur: "number" }, children: true },
+      HtmlLabel: { description: "HTML text in 3D", props: { text: "string", position: "[x,y,z]", color: "string", fontSize: "number" } },
+      EffectComposer: { description: "Post-processing wrapper", props: { enabled: "boolean" }, children: true },
+      Bloom: { description: "Glow effect", props: { intensity: "number", luminanceThreshold: "number", mipmapBlur: "boolean" } },
+      Glitch: { description: "Glitch distortion", props: { strength: "[x,y]", active: "boolean" } },
+      Vignette: { description: "Darkened corners", props: { offset: "number", darkness: "number" } },
+      PerspectiveCamera: { description: "Camera with perspective", props: { position: "[x,y,z]", fov: "number", makeDefault: "boolean" } },
+      OrbitControls: { description: "Orbit/zoom/pan controls", props: { enableDamping: "boolean", autoRotate: "boolean", autoRotateSpeed: "number" } },
+      Group: { description: "Container group", props: { position: "[x,y,z]", rotation: "[x,y,z]", scale: "[x,y,z]" }, children: true },
+      Model: { description: "GLTF/GLB model loader", props: { url: "string", position: "[x,y,z]", scale: "[x,y,z]" } },
+      Text3D: { description: "3D text in scene", props: { text: "string", fontSize: "number", color: "string", position: "[x,y,z]" } },
+    },
+    actions: {},
+  },
+  "3d-product": {
+    components: {
+      Box: { description: "Box mesh", props: { width: "number", height: "number", depth: "number", position: "[x,y,z]", material: { color: "string", metalness: "number(0-1)", roughness: "number(0-1)" }, castShadow: "boolean" } },
+      Sphere: { description: "Sphere mesh", props: { radius: "number", position: "[x,y,z]", material: { color: "string", metalness: "number(0-1)", roughness: "number(0-1)" }, castShadow: "boolean" } },
+      Cylinder: { description: "Cylinder mesh", props: { radiusTop: "number", radiusBottom: "number", height: "number", position: "[x,y,z]", material: { color: "string" } } },
+      Plane: { description: "Flat plane", props: { width: "number", height: "number", position: "[x,y,z]", rotation: "[x,y,z]" }, children: true },
+      RoundedBox: { description: "Rounded box", props: { width: "number", height: "number", depth: "number", radius: "number", position: "[x,y,z]", material: { color: "string" } } },
+      GlassSphere: { description: "Glass sphere with refraction", props: { radius: "number", position: "[x,y,z]", transmission: "number(0-1)", ior: "number" } },
+      GlassBox: { description: "Glass cuboid", props: { width: "number", height: "number", depth: "number", position: "[x,y,z]", transmission: "number(0-1)" } },
+      AmbientLight: { description: "Ambient light", props: { intensity: "number" } },
+      DirectionalLight: { description: "Directional light", props: { position: "[x,y,z]", intensity: "number", castShadow: "boolean" } },
+      SpotLight: { description: "Spot light", props: { position: "[x,y,z]", intensity: "number", angle: "number", penumbra: "number" } },
+      Environment: { description: "HDRI environment", props: { preset: "apartment|city|dawn|forest|lobby|night|park|studio|sunset|warehouse", background: "boolean" } },
+      ContactShadows: { description: "Contact shadows", props: { opacity: "number(0-1)", blur: "number", position: "[x,y,z]" } },
+      Float: { description: "Float animation", props: { speed: "number", floatIntensity: "number" }, children: true },
+      ReflectorPlane: { description: "Mirror plane", props: { mirror: "number(0-1)", position: "[x,y,z]" } },
+      Backdrop: { description: "Studio backdrop", props: { floor: "number", receiveShadow: "boolean" }, children: true },
+      Spin: { description: "Rotation animation", props: { speed: "number", axis: "x|y|z" }, children: true },
+      Orbit: { description: "Orbital animation", props: { speed: "number", radius: "number" }, children: true },
+      EffectComposer: { description: "Post-processing", props: { enabled: "boolean" }, children: true },
+      Bloom: { description: "Glow effect", props: { intensity: "number", luminanceThreshold: "number" } },
+      Vignette: { description: "Vignette effect", props: { offset: "number", darkness: "number" } },
+      PerspectiveCamera: { description: "Camera", props: { position: "[x,y,z]", fov: "number", makeDefault: "boolean" } },
+      OrbitControls: { description: "Camera controls", props: { enableDamping: "boolean", autoRotate: "boolean" } },
+      Group: { description: "Group container", props: { position: "[x,y,z]" }, children: true },
+      Text3D: { description: "3D text", props: { text: "string", fontSize: "number", color: "string", position: "[x,y,z]" } },
+      HtmlLabel: { description: "HTML label in 3D", props: { text: "string", position: "[x,y,z]", color: "string" } },
+    },
+    actions: {},
+  },
 };
 
 let leftTab = "json";
 let rightTab = "render";
 let streamLogEntries = [];
 
-function setPrompt(text) {
+function setPrompt(text, preset) {
   document.getElementById("prompt").value = text;
   document.getElementById("prompt").focus();
+  if (preset && PRESETS[preset]) {
+    loadPreset(preset, document.querySelector('.preset-chip[data-preset="' + preset + '"]'));
+  }
 }
 
 function switchLeftTab(tab, el) {
@@ -1429,11 +1632,38 @@ function exportSpec() {
 }
 
 
+const THREE_D_TYPES = new Set([
+  'Group','PerspectiveCamera','OrbitControls','AmbientLight','DirectionalLight','PointLight','SpotLight',
+  'Box','Sphere','Cylinder','Cone','Torus','Plane','Capsule','TorusKnot','RoundedBox',
+  'GlassSphere','GlassBox','DistortSphere','Environment','Fog','GridHelper',
+  'Sparkles','Stars','Sky','Cloud','ContactShadows','Float','ReflectorPlane','Backdrop',
+  'Spin','Orbit','Pulse','CameraShake','MeshPortalMaterial','HtmlLabel','WarpTunnel',
+  'EffectComposer','Bloom','Glitch','Vignette','Text3D','Model',
+]);
+
+function is3DSpec(spec) {
+  if (!spec || !spec.elements) return false;
+  let count = 0;
+  for (const el of Object.values(spec.elements)) {
+    if (THREE_D_TYPES.has(el.type)) count++;
+  }
+  return count > Object.keys(spec.elements).length / 2;
+}
+
 function renderSpec(spec) {
   const area = document.getElementById("previewPanel");
   area.innerHTML = "";
-  const el = renderElement(spec, spec.root);
-  if (el) area.appendChild(el);
+  if (is3DSpec(spec)) {
+    if (typeof window.render3DScene === 'function') {
+      window.render3DScene(spec, area);
+    } else {
+      area.innerHTML = '<div class="preview-empty"><span style="color:var(--red)">Three.js failed to load — check console or try refreshing</span></div>';
+    }
+  } else {
+    area.style.padding = "24px";
+    const el = renderElement(spec, spec.root);
+    if (el) area.appendChild(el);
+  }
   document.getElementById("exportBtn").style.display = "inline";
 }
 
@@ -1635,9 +1865,12 @@ async function doStream() {
 
   setLoading(true);
   setBadge("streaming", "CONNECTING");
+  if (typeof window.cleanup3D === 'function') window.cleanup3D();
 
   const jsonPanel = document.getElementById("jsonPanel");
   const previewPanel = document.getElementById("previewPanel");
+  previewPanel.style.padding = "24px";
+  previewPanel.style.overflow = "";
   jsonPanel.innerHTML = '<div class="json-placeholder">Opening iii Channel...</div>';
   previewPanel.innerHTML = '<div class="preview-empty"><span>Waiting for patches...</span></div>';
   streamLogEntries = [];
@@ -1697,6 +1930,7 @@ async function doStream() {
             if (partialSpec.root && Object.keys(partialSpec.elements).length > 0) {
               jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(partialSpec, null, 2)) + '<span class="cursor"></span>';
               jsonPanel.scrollTop = jsonPanel.scrollHeight;
+              previewPanel.style.padding = "24px";
               previewPanel.innerHTML = "";
               const el = renderStreamElement(partialSpec, partialSpec.root);
               if (el) previewPanel.appendChild(el);
@@ -1812,6 +2046,432 @@ document.getElementById("prompt").addEventListener("keydown", (e) => {
 loadPreset("dashboard", document.querySelector(".preset-chip"));
 checkHealth();
 setInterval(checkHealth, 5000);
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+
+let _renderer, _animId, _resizeObs, _scene, _controls, _composer;
+
+window.cleanup3D = function() {
+  if (_animId) { cancelAnimationFrame(_animId); _animId = null; }
+  if (_controls) { _controls.dispose(); _controls = null; }
+  if (_composer) { _composer.dispose(); _composer = null; }
+  if (_scene) {
+    _scene.traverse(obj => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (obj.material.map) obj.material.map.dispose();
+        if (obj.material.envMap) obj.material.envMap.dispose();
+        obj.material.dispose();
+      }
+    });
+    if (_scene.environment) { _scene.environment.dispose(); _scene.environment = null; }
+    _scene = null;
+  }
+  if (_renderer) { _renderer.dispose(); _renderer.domElement.remove(); _renderer = null; }
+  if (_resizeObs) { _resizeObs.disconnect(); _resizeObs = null; }
+};
+
+window.render3DScene = function(spec, container) {
+  window.cleanup3D();
+  container.innerHTML = '';
+  container.style.padding = '0';
+  container.style.overflow = 'hidden';
+
+  const w = container.clientWidth || 600;
+  const h = container.clientHeight || 460;
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  renderer.setSize(w, h, false);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.9;
+  renderer.domElement.style.display = 'block';
+  renderer.domElement.style.width = '100%';
+  renderer.domElement.style.height = '100%';
+  container.appendChild(renderer.domElement);
+  _renderer = renderer;
+
+  const scene = new THREE.Scene();
+  _scene = scene;
+  scene.background = new THREE.Color(0x0a0a12);
+
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  pmrem.compileEquirectangularShader();
+  const envScene = new THREE.Scene();
+  envScene.add(new THREE.AmbientLight(0x222244, 2));
+  const el1 = new THREE.PointLight(0xffffff, 40, 50); el1.position.set(5, 10, 5); envScene.add(el1);
+  const el2 = new THREE.PointLight(0x4488ff, 20, 50); el2.position.set(-5, 5, -5); envScene.add(el2);
+  const el3 = new THREE.PointLight(0xffeedd, 15, 50); el3.position.set(5, 2, -8); envScene.add(el3);
+  const envGeo = new THREE.SphereGeometry(20, 16, 16);
+  const envMat = new THREE.MeshBasicMaterial({ color: 0x111122, side: THREE.BackSide });
+  envScene.add(new THREE.Mesh(envGeo, envMat));
+  scene.environment = pmrem.fromScene(envScene, 0).texture;
+  pmrem.dispose();
+
+  let camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
+  camera.position.set(5, 3, 5);
+
+  let controls = null;
+  let needsBloom = null;
+  const floats = [], spins = [], orbits = [];
+
+  let _circleTex = null;
+  function _circleTexture() {
+    if (_circleTex) return _circleTex;
+    const cv = document.createElement('canvas');
+    cv.width = 32; cv.height = 32;
+    const ctx = cv.getContext('2d');
+    ctx.beginPath();
+    ctx.arc(16, 16, 14, 0, Math.PI * 2);
+    const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 14);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.5, 'rgba(255,255,255,0.4)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+    _circleTex = new THREE.CanvasTexture(cv);
+    return _circleTex;
+  }
+
+  function mkMat(el) {
+    const m = el.props.material || {};
+    const color = m.color || el.props.color || '#4488ff';
+    const metal = m.metalness != null ? m.metalness : 0.3;
+    const rough = m.roughness != null ? m.roughness : 0.4;
+    if (el.type === 'GlassSphere' || el.type === 'GlassBox') {
+      return new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color(color), metalness: 0, roughness: 0,
+        transmission: el.props.transmission || 0.9, ior: el.props.ior || 1.5, transparent: true,
+      });
+    }
+    const emissive = m.emissive ? new THREE.Color(m.emissive) : null;
+    return new THREE.MeshStandardMaterial({
+      color: new THREE.Color(color), metalness: metal, roughness: rough,
+      emissive: emissive || new THREE.Color(0x000000),
+      emissiveIntensity: emissive ? 0.5 : 0,
+    });
+  }
+
+  function build(id, parent) {
+    const el = spec.elements[id];
+    if (!el) return;
+    const p = el.props || {};
+    const kids = el.children || [];
+
+    switch (el.type) {
+      case 'Group': {
+        const g = new THREE.Group();
+        if (p.position) g.position.fromArray(p.position);
+        if (p.rotation) g.rotation.fromArray(p.rotation);
+        if (p.scale) g.scale.fromArray(p.scale);
+        parent.add(g);
+        for (const c of kids) build(c, g);
+        break;
+      }
+      case 'PerspectiveCamera':
+        camera = new THREE.PerspectiveCamera(p.fov || 45, w / h, 0.1, 1000);
+        if (p.position) camera.position.fromArray(p.position);
+        camera.lookAt(0, 0, 0);
+        break;
+      case 'OrbitControls':
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = p.enableDamping !== false;
+        if (p.autoRotate) { controls.autoRotate = true; controls.autoRotateSpeed = p.autoRotateSpeed || 1; }
+        break;
+      case 'AmbientLight':
+        parent.add(new THREE.AmbientLight(new THREE.Color(p.color || '#fff'), p.intensity || 0.5));
+        break;
+      case 'DirectionalLight': {
+        const l = new THREE.DirectionalLight(0xffffff, p.intensity || 1);
+        if (p.position) l.position.fromArray(p.position);
+        if (p.castShadow) {
+          l.castShadow = true;
+          l.shadow.mapSize.set(2048, 2048);
+          l.shadow.camera.near = 0.5; l.shadow.camera.far = 50;
+          l.shadow.camera.left = -10; l.shadow.camera.right = 10;
+          l.shadow.camera.top = 10; l.shadow.camera.bottom = -10;
+        }
+        parent.add(l);
+        break;
+      }
+      case 'PointLight': {
+        const l = new THREE.PointLight(new THREE.Color(p.color || '#fff'), p.intensity || 1, p.distance || 0);
+        if (p.position) l.position.fromArray(p.position);
+        parent.add(l);
+        break;
+      }
+      case 'SpotLight': {
+        const l = new THREE.SpotLight(0xffffff, p.intensity || 1, 0, p.angle || Math.PI/6, p.penumbra || 0.5);
+        if (p.position) l.position.fromArray(p.position);
+        parent.add(l);
+        break;
+      }
+      case 'Sphere': case 'GlassSphere': case 'DistortSphere': {
+        const mesh = new THREE.Mesh(new THREE.SphereGeometry(p.radius || 1, 64, 64), mkMat(el));
+        if (p.position) mesh.position.fromArray(p.position);
+        if (p.castShadow) mesh.castShadow = true;
+        parent.add(mesh);
+        for (const c of kids) build(c, mesh);
+        break;
+      }
+      case 'Box': case 'GlassBox': case 'RoundedBox': {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(p.width||1, p.height||1, p.depth||1), mkMat(el));
+        if (p.position) mesh.position.fromArray(p.position);
+        if (p.rotation) mesh.rotation.fromArray(p.rotation);
+        if (p.castShadow) mesh.castShadow = true;
+        parent.add(mesh);
+        for (const c of kids) build(c, mesh);
+        break;
+      }
+      case 'Cylinder': case 'Capsule': {
+        const mesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(p.radiusTop||p.radius||0.5, p.radiusBottom||p.radius||0.5, p.height||p.length||1, 32),
+          mkMat(el)
+        );
+        if (p.position) mesh.position.fromArray(p.position);
+        parent.add(mesh);
+        break;
+      }
+      case 'Cone': {
+        const mesh = new THREE.Mesh(new THREE.ConeGeometry(p.radius||0.5, p.height||1, 32), mkMat(el));
+        if (p.position) mesh.position.fromArray(p.position);
+        parent.add(mesh);
+        break;
+      }
+      case 'Torus': {
+        const mesh = new THREE.Mesh(new THREE.TorusGeometry(p.radius||1, p.tube||0.3, 32, 100), mkMat(el));
+        if (p.position) mesh.position.fromArray(p.position);
+        parent.add(mesh);
+        break;
+      }
+      case 'TorusKnot': {
+        const mesh = new THREE.Mesh(new THREE.TorusKnotGeometry(p.radius||1, p.tube||0.3, 128, 32, p.p||2, p.q||3), mkMat(el));
+        if (p.position) mesh.position.fromArray(p.position);
+        parent.add(mesh);
+        break;
+      }
+      case 'Plane': {
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(p.width||10, p.height||10), mkMat(el));
+        if (p.position) mesh.position.fromArray(p.position);
+        if (p.rotation) mesh.rotation.fromArray(p.rotation);
+        if (p.receiveShadow) mesh.receiveShadow = true;
+        parent.add(mesh);
+        for (const c of kids) build(c, mesh);
+        break;
+      }
+      case 'ReflectorPlane': {
+        const mesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(20, 20),
+          new THREE.MeshStandardMaterial({ color: 0x111111, metalness: p.mirror||0.5, roughness: 0.05 })
+        );
+        mesh.receiveShadow = true;
+        if (p.position) mesh.position.fromArray(p.position);
+        if (p.rotation) mesh.rotation.fromArray(p.rotation);
+        else mesh.rotation.x = -Math.PI / 2;
+        parent.add(mesh);
+        break;
+      }
+      case 'ContactShadows': {
+        const mesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(15, 15),
+          new THREE.ShadowMaterial({ opacity: p.opacity || 0.4 })
+        );
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.receiveShadow = true;
+        if (p.position) mesh.position.fromArray(p.position);
+        parent.add(mesh);
+        break;
+      }
+      case 'Environment': {
+        if (p.background !== false) {
+          const colors = {
+            studio:0x1a1a2e, city:0x0a1628, sunset:0x2d1b2e, dawn:0x1a1a3e,
+            night:0x050510, forest:0x0a1a0a, warehouse:0x151515,
+          };
+          scene.background = new THREE.Color(colors[p.preset] || 0x111122);
+        }
+        parent.add(new THREE.HemisphereLight(0xffeedd, 0x222233, 0.25));
+        break;
+      }
+      case 'Fog':
+        scene.fog = new THREE.Fog(new THREE.Color(p.color||'#000'), p.near||10, p.far||50);
+        break;
+      case 'GridHelper':
+        parent.add(new THREE.GridHelper(p.size||10, p.divisions||10, new THREE.Color(p.color||'#444'), 0x222222));
+        break;
+      case 'Stars': {
+        const n = p.count || 1000;
+        const pos = new Float32Array(n * 3);
+        const r = p.radius || 100;
+        for (let i = 0; i < n*3; i++) pos[i] = (Math.random()-0.5)*r*2;
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        parent.add(new THREE.Points(geom, new THREE.PointsMaterial({
+          color:0xffffff, size: 0.15, sizeAttenuation:true, transparent:true, opacity:0.9,
+          map: _circleTexture(), blending: THREE.AdditiveBlending, depthWrite: false
+        })));
+        break;
+      }
+      case 'Sparkles': {
+        const n = p.count || 50;
+        const pos = new Float32Array(n * 3);
+        for (let i = 0; i < n*3; i++) pos[i] = (Math.random()-0.5)*6;
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        const pts = new THREE.Points(geom, new THREE.PointsMaterial({
+          color: new THREE.Color(p.color||'#fff'), size: p.size||0.08, sizeAttenuation:true,
+          transparent:true, opacity:0.7, map: _circleTexture(), blending: THREE.AdditiveBlending, depthWrite: false
+        }));
+        parent.add(pts);
+        floats.push({ obj:pts, speed:p.speed||1, type:'sparkle' });
+        break;
+      }
+      case 'Float': {
+        const g = new THREE.Group();
+        parent.add(g);
+        floats.push({ obj:g, speed:p.speed||1, fi:p.floatIntensity||1, ri:p.rotationIntensity||0, baseY:g.position.y, type:'float' });
+        for (const c of kids) build(c, g);
+        break;
+      }
+      case 'Spin': {
+        const g = new THREE.Group();
+        parent.add(g);
+        spins.push({ obj:g, speed:p.speed||1, axis:p.axis||'y' });
+        for (const c of kids) build(c, g);
+        break;
+      }
+      case 'Orbit': {
+        const g = new THREE.Group();
+        parent.add(g);
+        orbits.push({ obj:g, speed:p.speed||1, radius:p.radius||3 });
+        for (const c of kids) build(c, g);
+        break;
+      }
+      case 'Backdrop': {
+        const geom = new THREE.PlaneGeometry(16, 8, 32, 32);
+        const attr = geom.attributes.position;
+        for (let i = 0; i < attr.count; i++) {
+          const y = attr.getY(i);
+          if (y > 0) {
+            const t = y / 4;
+            attr.setZ(i, attr.getZ(i) - t * t * 2.5);
+          }
+        }
+        geom.computeVertexNormals();
+        const mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({
+          color: 0x2a2a2a, side: THREE.DoubleSide, roughness: 0.9, metalness: 0.0
+        }));
+        mesh.receiveShadow = true;
+        mesh.position.set(0, 4, -4);
+        parent.add(mesh);
+        for (const c of kids) build(c, parent);
+        break;
+      }
+      case 'Sky':
+        scene.background = new THREE.Color(0x87CEEB);
+        break;
+      case 'Text3D': case 'HtmlLabel': {
+        const cv = document.createElement('canvas');
+        const ctx = cv.getContext('2d');
+        cv.width = 512; cv.height = 128;
+        ctx.fillStyle = p.color || '#fff';
+        ctx.font = `bold ${(p.fontSize||1)*40}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.fillText(p.text || '', 256, 80);
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent:true }));
+        sp.scale.set(el.type === 'HtmlLabel' ? 2 : 4, 1, 1);
+        if (p.position) sp.position.fromArray(p.position);
+        parent.add(sp);
+        break;
+      }
+      case 'EffectComposer':
+        for (const c of kids) build(c, parent);
+        break;
+      case 'Bloom':
+        needsBloom = { intensity: Math.min(p.intensity||0.3, 0.6), threshold: Math.max(p.luminanceThreshold||0.9, 0.85) };
+        break;
+      case 'Cloud': {
+        const cg = new THREE.SphereGeometry(p.segments || 3, 16, 16);
+        const cm = new THREE.MeshStandardMaterial({
+          color: 0xcccccc, transparent: true, opacity: p.opacity || 0.3, roughness: 1, metalness: 0,
+        });
+        const cmesh = new THREE.Mesh(cg, cm);
+        cmesh.scale.set(3, 1, 2);
+        if (p.position) cmesh.position.fromArray(p.position);
+        parent.add(cmesh);
+        break;
+      }
+      case 'Pulse': case 'CameraShake': case 'MeshPortalMaterial': case 'WarpTunnel': case 'Glitch': case 'Vignette': case 'Model':
+        for (const c of kids) build(c, parent);
+        break;
+      default:
+        for (const c of kids) build(c, parent);
+    }
+  }
+
+  build(spec.root, scene);
+
+  if (!controls) {
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.5;
+  }
+  _controls = controls;
+
+  let composer = null;
+  if (needsBloom) {
+    composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), needsBloom.intensity, 0.15, needsBloom.threshold);
+    composer.addPass(bloom);
+  }
+  _composer = composer;
+
+  const clock = new THREE.Clock();
+  function animate() {
+    _animId = requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+    for (const f of floats) {
+      if (f.type === 'float') {
+        f.obj.position.y = f.baseY + Math.sin(t * f.speed) * f.fi * 0.3;
+        if (f.ri) { f.obj.rotation.x = Math.sin(t*f.speed*0.5)*f.ri*0.1; f.obj.rotation.z = Math.cos(t*f.speed*0.7)*f.ri*0.1; }
+      } else { f.obj.rotation.y += 0.002 * f.speed; }
+    }
+    for (const s of spins) {
+      const d = 0.01 * s.speed;
+      if (s.axis==='x') s.obj.rotation.x+=d; else if (s.axis==='z') s.obj.rotation.z+=d; else s.obj.rotation.y+=d;
+    }
+    for (const o of orbits) {
+      o.obj.position.x = Math.cos(t*o.speed)*o.radius;
+      o.obj.position.z = Math.sin(t*o.speed)*o.radius;
+    }
+    controls.update();
+    if (composer) composer.render(); else renderer.render(scene, camera);
+  }
+  animate();
+
+  _resizeObs = new ResizeObserver(() => {
+    const nw = container.clientWidth || 600;
+    const nh = container.clientHeight || 460;
+    camera.aspect = nw / nh;
+    camera.updateProjectionMatrix();
+    renderer.setSize(nw, nh, false);
+    if (composer) composer.setSize(nw, nh);
+  });
+  _resizeObs.observe(container);
+};
+
+
 </script>
 </body>
 </html>

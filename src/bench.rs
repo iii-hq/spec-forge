@@ -1,10 +1,11 @@
 #![allow(dead_code)]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::hint::black_box;
 use std::time::Instant;
 
 mod cache;
+mod catalogs;
 mod prompt;
 mod semantic;
 mod types;
@@ -46,40 +47,7 @@ fn generate_spec(count: usize, catalog: &Catalog) -> UISpec {
 }
 
 fn make_dashboard_catalog() -> Catalog {
-    let mut components = BTreeMap::new();
-    for (name, desc, children) in [
-        ("Stack", "Flex container", true),
-        ("Card", "Container card", true),
-        ("Grid", "Grid layout", true),
-        ("Heading", "Section heading", false),
-        ("Metric", "Display a KPI metric", false),
-        ("Table", "Data table", false),
-        ("Chart", "Chart visualization", false),
-        ("Button", "Clickable button", false),
-        ("Text", "Text paragraph", false),
-        ("Badge", "Status badge", false),
-        ("Divider", "Visual separator", false),
-        ("Input", "Text input field", false),
-    ] {
-        components.insert(
-            name.to_string(),
-            ComponentDef {
-                description: desc.to_string(),
-                props: serde_json::json!({"label": "string", "value": "string"}),
-                children,
-            },
-        );
-    }
-    let mut actions = BTreeMap::new();
-    for (name, desc) in [
-        ("export_report", "Export dashboard to PDF"),
-        ("refresh_data", "Refresh all data"),
-        ("save", "Save changes"),
-        ("filter", "Apply data filter"),
-    ] {
-        actions.insert(name.to_string(), ActionDef { description: desc.to_string() });
-    }
-    Catalog { components, actions }
+    catalogs::get_preset("dashboard").expect("dashboard preset must exist")
 }
 
 // Single source of truth: bench/data.json (shared with JS benchmarks)
