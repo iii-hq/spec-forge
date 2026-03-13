@@ -367,9 +367,9 @@ fn register_http_triggers(iii: &III) {
         ),
         (
             "api::get::spec-forge::catalogs",
-            "spec-forge/catalogs",
+            "spec-forge/catalogs/:name",
             "GET",
-            "List available catalog presets",
+            "List available catalog presets or get a specific one by name",
         ),
     ];
 
@@ -466,7 +466,8 @@ async fn generate_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (
     s.semantic.store(&req.prompt, &catalog_hash, key);
 
     let elapsed = start.elapsed().as_millis() as u64;
-    let is_3d = catalog.components.contains_key("PerspectiveCamera");
+    let is_3d = catalog.components.contains_key("PerspectiveCamera")
+        && catalog.components.contains_key("AmbientLight");
     let metric_key = if is_3d {
         "spec-forge::metrics::generate_3d"
     } else {

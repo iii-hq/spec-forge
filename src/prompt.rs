@@ -1,27 +1,8 @@
 use crate::types::Catalog;
 
-const THREE_D_COMPONENTS: &[&str] = &[
-    "Box", "Sphere", "Cylinder", "Cone", "Torus", "Plane", "Capsule",
-    "TorusKnot", "RoundedBox",
-    "AmbientLight", "DirectionalLight", "PointLight", "SpotLight",
-    "GlassSphere", "GlassBox", "DistortSphere",
-    "Environment", "Fog", "GridHelper",
-    "Sparkles", "Stars", "Sky", "Cloud",
-    "ContactShadows", "Float", "ReflectorPlane", "Backdrop",
-    "WarpTunnel", "Spin", "Orbit", "Pulse", "CameraShake",
-    "MeshPortalMaterial", "HtmlLabel",
-    "EffectComposer", "Bloom", "Glitch", "Vignette",
-    "PerspectiveCamera", "OrbitControls",
-    "Group", "Model", "Text3D",
-];
-
 fn is_3d_catalog(catalog: &Catalog) -> bool {
-    let three_d_count = catalog
-        .components
-        .keys()
-        .filter(|k| THREE_D_COMPONENTS.contains(&k.as_str()))
-        .count();
-    three_d_count > catalog.components.len() / 2
+    catalog.components.contains_key("PerspectiveCamera")
+        && catalog.components.contains_key("AmbientLight")
 }
 
 pub fn build_prompt(user_prompt: &str, catalog: &Catalog) -> String {

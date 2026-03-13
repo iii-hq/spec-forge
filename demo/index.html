@@ -1135,7 +1135,7 @@
   <span class="j-key">"elements"</span>: {
     <span class="j-key">"scene"</span>: {
       <span class="j-key">"type"</span>: <span class="j-str">"Group"</span>,
-      <span class="j-key">"children"</span>: [<span class="j-str">"cam"</span>, <span class="j-str">"env"</span>, <span class="j-str">"sphere"</span>, <span class="j-str">"bloom"</span>]
+      <span class="j-key">"children"</span>: [<span class="j-str">"cam"</span>, <span class="j-str">"env"</span>, <span class="j-str">"sphere"</span>, <span class="j-str">"effects"</span>]
     },
     <span class="j-key">"cam"</span>: {
       <span class="j-key">"type"</span>: <span class="j-str">"PerspectiveCamera"</span>,
@@ -1151,6 +1151,10 @@
         <span class="j-key">"radius"</span>: <span class="j-num">1</span>,
         <span class="j-key">"material"</span>: { <span class="j-key">"color"</span>: <span class="j-str">"#4488ff"</span>, <span class="j-key">"metalness"</span>: <span class="j-num">0.9</span> }
       }
+    },
+    <span class="j-key">"effects"</span>: {
+      <span class="j-key">"type"</span>: <span class="j-str">"EffectComposer"</span>,
+      <span class="j-key">"children"</span>: [<span class="j-str">"bloom"</span>]
     },
     <span class="j-key">"bloom"</span>: {
       <span class="j-key">"type"</span>: <span class="j-str">"Bloom"</span>,
@@ -2052,10 +2056,24 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 
-let _renderer, _animId, _resizeObs;
+let _renderer, _animId, _resizeObs, _scene, _controls, _composer;
 
 window.cleanup3D = function() {
   if (_animId) { cancelAnimationFrame(_animId); _animId = null; }
+  if (_controls) { _controls.dispose(); _controls = null; }
+  if (_composer) { _composer.dispose(); _composer = null; }
+  if (_scene) {
+    _scene.traverse(obj => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (obj.material.map) obj.material.map.dispose();
+        if (obj.material.envMap) obj.material.envMap.dispose();
+        obj.material.dispose();
+      }
+    });
+    if (_scene.environment) { _scene.environment.dispose(); _scene.environment = null; }
+    _scene = null;
+  }
   if (_renderer) { _renderer.dispose(); _renderer.domElement.remove(); _renderer = null; }
   if (_resizeObs) { _resizeObs.disconnect(); _resizeObs = null; }
 };
@@ -2083,6 +2101,7 @@ window.render3DScene = function(spec, container) {
   _renderer = renderer;
 
   const scene = new THREE.Scene();
+  _scene = scene;
   scene.background = new THREE.Color(0x0a0a12);
 
   const pmrem = new THREE.PMREMGenerator(renderer);
@@ -2407,6 +2426,7 @@ window.render3DScene = function(spec, container) {
     controls.autoRotate = true;
     controls.autoRotateSpeed = 0.5;
   }
+  _controls = controls;
 
   let composer = null;
   if (needsBloom) {
@@ -2415,6 +2435,7 @@ window.render3DScene = function(spec, container) {
     const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), needsBloom.intensity, 0.15, needsBloom.threshold);
     composer.addPass(bloom);
   }
+  _composer = composer;
 
   const clock = new THREE.Clock();
   function animate() {

@@ -76,21 +76,29 @@ pub fn validate_spec(spec: &UISpec, catalog: &Catalog) -> Vec<ValidationError> {
     }
 
     if is_3d_catalog(catalog) {
-        validate_3d_scene(spec, &mut errors);
+        validate_3d_scene(spec, &reachable, &mut errors);
     }
 
     errors
 }
 
-fn validate_3d_scene(spec: &UISpec, errors: &mut Vec<ValidationError>) {
-    let types: Vec<&str> = spec
+fn validate_3d_scene(
+    spec: &UISpec,
+    reachable: &HashSet<&str>,
+    errors: &mut Vec<ValidationError>,
+) {
+    let reachable_elements: Vec<(&String, &UIElement)> = spec
         .elements
-        .values()
-        .map(|e| e.element_type.as_str())
+        .iter()
+        .filter(|(id, _)| reachable.contains(id.as_str()))
         .collect();
 
-    let has_camera = types.iter().any(|t| THREE_D_CAMERAS.contains(t));
-    let has_light = types.iter().any(|t| THREE_D_LIGHTS.contains(t));
+    let has_camera = reachable_elements
+        .iter()
+        .any(|(_, e)| THREE_D_CAMERAS.contains(&e.element_type.as_str()));
+    let has_light = reachable_elements
+        .iter()
+        .any(|(_, e)| THREE_D_LIGHTS.contains(&e.element_type.as_str()));
 
     if !has_camera {
         errors.push(ValidationError {
@@ -106,15 +114,15 @@ fn validate_3d_scene(spec: &UISpec, errors: &mut Vec<ValidationError>) {
     }
 
     let postfx_children: &[&str] = &["Bloom", "Glitch", "Vignette"];
-    for (id, el) in &spec.elements {
+    for (id, el) in &reachable_elements {
         if postfx_children.contains(&el.element_type.as_str()) {
-            let is_child_of_composer = spec.elements.values().any(|parent| {
+            let is_child_of_composer = reachable_elements.iter().any(|(_, parent)| {
                 parent.element_type == "EffectComposer"
-                    && parent.children.iter().any(|c| c == id)
+                    && parent.children.iter().any(|c| c == *id)
             });
             if !is_child_of_composer {
                 errors.push(ValidationError {
-                    element_id: id.clone(),
+                    element_id: (*id).clone(),
                     message: format!(
                         "{} must be a child of EffectComposer",
                         el.element_type
@@ -327,7 +335,7 @@ mod tests {
             elements,
         };
         let errors = validate_spec(&spec, &catalog);
-        assert!(errors.len() >= 3);
+        assert_eq!(errors.len(), 3, "Expected exactly 3 errors (bad ref + unknown type + orphan), got: {:?}", errors);
     }
 
     #[test]
