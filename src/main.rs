@@ -367,9 +367,15 @@ fn register_http_triggers(iii: &III) {
         ),
         (
             "api::get::spec-forge::catalogs",
+            "spec-forge/catalogs",
+            "GET",
+            "List available catalog presets",
+        ),
+        (
+            "api::get::spec-forge::catalogs",
             "spec-forge/catalogs/:name",
             "GET",
-            "List available catalog presets or get a specific one by name",
+            "Get a specific catalog preset by name",
         ),
     ];
 
