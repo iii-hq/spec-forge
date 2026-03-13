@@ -5,6 +5,7 @@ use std::hint::black_box;
 use std::time::Instant;
 
 mod cache;
+mod catalogs;
 mod prompt;
 mod semantic;
 mod types;

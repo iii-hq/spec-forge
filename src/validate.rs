@@ -13,6 +13,20 @@ impl std::fmt::Display for ValidationError {
     }
 }
 
+const THREE_D_LIGHTS: &[&str] = &[
+    "AmbientLight",
+    "DirectionalLight",
+    "PointLight",
+    "SpotLight",
+];
+
+const THREE_D_CAMERAS: &[&str] = &["PerspectiveCamera"];
+
+fn is_3d_catalog(catalog: &Catalog) -> bool {
+    catalog.components.contains_key("PerspectiveCamera")
+        && catalog.components.contains_key("AmbientLight")
+}
+
 pub fn validate_spec(spec: &UISpec, catalog: &Catalog) -> Vec<ValidationError> {
     let mut errors = Vec::new();
     let component_names: HashSet<&str> = catalog.components.keys().map(|s| s.as_str()).collect();
@@ -61,7 +75,54 @@ pub fn validate_spec(spec: &UISpec, catalog: &Catalog) -> Vec<ValidationError> {
         }
     }
 
+    if is_3d_catalog(catalog) {
+        validate_3d_scene(spec, &mut errors);
+    }
+
     errors
+}
+
+fn validate_3d_scene(spec: &UISpec, errors: &mut Vec<ValidationError>) {
+    let types: Vec<&str> = spec
+        .elements
+        .values()
+        .map(|e| e.element_type.as_str())
+        .collect();
+
+    let has_camera = types.iter().any(|t| THREE_D_CAMERAS.contains(t));
+    let has_light = types.iter().any(|t| THREE_D_LIGHTS.contains(t));
+
+    if !has_camera {
+        errors.push(ValidationError {
+            element_id: "__scene__".into(),
+            message: "3D scene missing PerspectiveCamera — scene won't render".into(),
+        });
+    }
+    if !has_light {
+        errors.push(ValidationError {
+            element_id: "__scene__".into(),
+            message: "3D scene has no lights (AmbientLight, DirectionalLight, PointLight, or SpotLight) — objects will be dark".into(),
+        });
+    }
+
+    let postfx_children: &[&str] = &["Bloom", "Glitch", "Vignette"];
+    for (id, el) in &spec.elements {
+        if postfx_children.contains(&el.element_type.as_str()) {
+            let is_child_of_composer = spec.elements.values().any(|parent| {
+                parent.element_type == "EffectComposer"
+                    && parent.children.iter().any(|c| c == id)
+            });
+            if !is_child_of_composer {
+                errors.push(ValidationError {
+                    element_id: id.clone(),
+                    message: format!(
+                        "{} must be a child of EffectComposer",
+                        el.element_type
+                    ),
+                });
+            }
+        }
+    }
 }
 
 fn collect_reachable<'a>(
@@ -266,6 +327,137 @@ mod tests {
             elements,
         };
         let errors = validate_spec(&spec, &catalog);
-        assert!(errors.len() >= 3); // bad ref + unknown type + orphan
+        assert!(errors.len() >= 3);
+    }
+
+    #[test]
+    fn three_d_scene_missing_camera_and_light() {
+        let catalog = crate::catalogs::three_d();
+        let mut elements = HashMap::new();
+        elements.insert(
+            "scene".into(),
+            UIElement {
+                element_type: "Group".into(),
+                props: serde_json::json!({}),
+                children: vec!["box-1".into()],
+            },
+        );
+        elements.insert(
+            "box-1".into(),
+            UIElement {
+                element_type: "Box".into(),
+                props: serde_json::json!({"position": [0,1,0]}),
+                children: vec![],
+            },
+        );
+        let spec = UISpec {
+            root: "scene".into(),
+            elements,
+        };
+        let errors = validate_spec(&spec, &catalog);
+        let messages: Vec<&str> = errors.iter().map(|e| e.message.as_str()).collect();
+        assert!(
+            messages.iter().any(|m| m.contains("PerspectiveCamera")),
+            "Should warn about missing camera"
+        );
+        assert!(
+            messages.iter().any(|m| m.contains("no lights")),
+            "Should warn about missing lights"
+        );
+    }
+
+    #[test]
+    fn three_d_valid_scene_passes() {
+        let catalog = crate::catalogs::three_d();
+        let mut elements = HashMap::new();
+        elements.insert(
+            "scene".into(),
+            UIElement {
+                element_type: "Group".into(),
+                props: serde_json::json!({}),
+                children: vec![
+                    "cam".into(),
+                    "light".into(),
+                    "sphere".into(),
+                ],
+            },
+        );
+        elements.insert(
+            "cam".into(),
+            UIElement {
+                element_type: "PerspectiveCamera".into(),
+                props: serde_json::json!({"position": [5,3,5], "fov": 45, "makeDefault": true}),
+                children: vec![],
+            },
+        );
+        elements.insert(
+            "light".into(),
+            UIElement {
+                element_type: "AmbientLight".into(),
+                props: serde_json::json!({"intensity": 0.5}),
+                children: vec![],
+            },
+        );
+        elements.insert(
+            "sphere".into(),
+            UIElement {
+                element_type: "Sphere".into(),
+                props: serde_json::json!({"radius": 1, "position": [0,1,0]}),
+                children: vec![],
+            },
+        );
+        let spec = UISpec {
+            root: "scene".into(),
+            elements,
+        };
+        let errors = validate_spec(&spec, &catalog);
+        assert!(errors.is_empty(), "Got: {:?}", errors);
+    }
+
+    #[test]
+    fn three_d_bloom_outside_effect_composer() {
+        let catalog = crate::catalogs::three_d();
+        let mut elements = HashMap::new();
+        elements.insert(
+            "scene".into(),
+            UIElement {
+                element_type: "Group".into(),
+                props: serde_json::json!({}),
+                children: vec!["cam".into(), "light".into(), "bloom".into()],
+            },
+        );
+        elements.insert(
+            "cam".into(),
+            UIElement {
+                element_type: "PerspectiveCamera".into(),
+                props: serde_json::json!({"position": [5,3,5], "makeDefault": true}),
+                children: vec![],
+            },
+        );
+        elements.insert(
+            "light".into(),
+            UIElement {
+                element_type: "AmbientLight".into(),
+                props: serde_json::json!({"intensity": 1.0}),
+                children: vec![],
+            },
+        );
+        elements.insert(
+            "bloom".into(),
+            UIElement {
+                element_type: "Bloom".into(),
+                props: serde_json::json!({"intensity": 1.0}),
+                children: vec![],
+            },
+        );
+        let spec = UISpec {
+            root: "scene".into(),
+            elements,
+        };
+        let errors = validate_spec(&spec, &catalog);
+        assert!(
+            errors.iter().any(|e| e.message.contains("EffectComposer")),
+            "Bloom outside EffectComposer should warn"
+        );
     }
 }

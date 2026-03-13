@@ -60,7 +60,10 @@
   "prompts": {
     "simple": "A login form with email and password",
     "medium": "A sales dashboard showing revenue metrics, a line chart of monthly sales, and a table of recent orders with status badges",
-    "complex": "An admin panel with a sidebar navigation, a header with user profile and notifications, a main content area with a grid of metric cards (revenue, users, orders, conversion rate), a sales chart, a recent orders table with sorting and filtering, and action buttons for export and refresh"
+    "complex": "An admin panel with a sidebar navigation, a header with user profile and notifications, a main content area with a grid of metric cards (revenue, users, orders, conversion rate), a sales chart, a recent orders table with sorting and filtering, and action buttons for export and refresh",
+    "3d_simple": "A floating sphere with studio lighting",
+    "3d_product": "A product showroom with a metallic sphere on a reflective floor, studio lighting, bloom glow, and auto-rotating camera",
+    "3d_scene": "A deep space scene with a starfield, nebula clouds, floating asteroids, a planet with rings, and a glowing portal"
   },
   "specs": {
     "tiny": {
@@ -82,6 +85,23 @@
         "metric-3": { "type": "Metric", "props": { "label": "Orders", "value": "89", "trend": "down" }, "children": [] },
         "table-card": { "type": "Card", "props": { "title": "Recent Orders" }, "children": ["orders-table"] },
         "orders-table": { "type": "Table", "props": { "headers": ["ID", "Customer", "Amount", "Status"], "rows": [["#001", "Alice", "$150", "Shipped"], ["#002", "Bob", "$89", "Pending"]] }, "children": [] }
+      }
+    },
+    "3d_product": {
+      "root": "scene",
+      "elements": {
+        "scene": { "type": "Group", "props": { "position": [0,0,0] }, "children": ["camera", "controls", "env", "light-amb", "light-key", "floor", "sphere-float", "shadows", "effects"] },
+        "camera": { "type": "PerspectiveCamera", "props": { "position": [5,3,5], "fov": 45, "makeDefault": true }, "children": [] },
+        "controls": { "type": "OrbitControls", "props": { "enableDamping": true, "autoRotate": true, "autoRotateSpeed": 1.0 }, "children": [] },
+        "env": { "type": "Environment", "props": { "preset": "studio", "background": false }, "children": [] },
+        "light-amb": { "type": "AmbientLight", "props": { "intensity": 0.4 }, "children": [] },
+        "light-key": { "type": "DirectionalLight", "props": { "position": [5,8,5], "intensity": 1.2, "castShadow": true }, "children": [] },
+        "floor": { "type": "ReflectorPlane", "props": { "mirror": 0.5, "blur": [300,100], "resolution": 1024, "mixStrength": 0.8, "position": [0,-0.01,0], "rotation": [-1.5708,0,0] }, "children": [] },
+        "sphere-float": { "type": "Float", "props": { "speed": 1.5, "rotationIntensity": 0.4, "floatIntensity": 0.6 }, "children": ["sphere"] },
+        "sphere": { "type": "Sphere", "props": { "radius": 1, "position": [0,1.5,0], "material": { "color": "#4488ff", "metalness": 0.9, "roughness": 0.1 }, "castShadow": true }, "children": [] },
+        "shadows": { "type": "ContactShadows", "props": { "opacity": 0.6, "blur": 2, "position": [0,-0.01,0] }, "children": [] },
+        "effects": { "type": "EffectComposer", "props": { "enabled": true }, "children": ["bloom"] },
+        "bloom": { "type": "Bloom", "props": { "intensity": 0.5, "luminanceThreshold": 0.8, "mipmapBlur": true }, "children": [] }
       }
     }
   },
