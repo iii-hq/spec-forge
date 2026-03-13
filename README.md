@@ -2,7 +2,7 @@
 
 Pure iii-sdk worker for [json-render](https://github.com/vercel-labs/json-render) UI and 3D scene generation — JSONL patch streaming, caching, rate limiting, and validation. Generates both 2D UI components and Three.js 3D scenes from natural language. No standalone HTTP server; all endpoints are iii functions with HTTP triggers served by the iii engine.
 
-https://github.com/iii-hq/spec-forge/raw/feat/3d-support/demo/demo.mp4
+![spec-forge demo](demo/demo.gif)
 
 ```
 Browser  ──POST──>  iii-engine (:3111)  ──>  spec-forge worker (Rust)  ──>  Claude API
