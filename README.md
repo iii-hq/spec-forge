@@ -1,37 +1,128 @@
 # spec-forge
 
-Pure iii-sdk worker for [json-render](https://github.com/vercel-labs/json-render) UI and 3D scene generation — JSONL patch streaming, caching, rate limiting, and validation. Generates both 2D UI components and Three.js 3D scenes from natural language. No standalone HTTP server; all endpoints are iii functions with HTTP triggers served by the iii engine.
+Standard iii worker for [json-render](https://github.com/vercel-labs/json-render) — generative UI, 3D scenes, PDFs, emails, video, and more. Caching, rate limiting, collaboration, and real-time streaming via iii primitives. All renderers from json-render work out of the box.
 
 ![spec-forge demo](demo/demo.gif)
 
 ```
-Browser  ──POST──>  iii-engine (:3111)  ──>  spec-forge worker (Rust)  ──>  Claude API
-                         │                           │
-                         │                    JSONL patches (RFC 6902)
-                         │                           │
-Browser  <──WebSocket──  iii Channel (:49134)  <─────┘
-     │
-     └──>  Progressive render (each patch = 1 component)
+Browser (iii-browser-sdk)                    iii-engine                   spec-forge worker (Rust)
+       │                                         │                              │
+       ├─ registerFunction('ui::render-patch')   │                              │
+       ├─ registerTrigger({ type: 'state' })     │                              │
+       │                                         │                              │
+       ├─ iii.trigger('spec-forge::generate') ──>│──> registerFunction ────────>│──> Claude API
+       │                                         │                              │
+       │<── iii.trigger('ui::render-patch') ─────│<── patches pushed back ──────│
+       │    (each patch = 1 component)           │                              │
+       │                                         │                              │
+       ├─ iii.trigger('spec-forge::stream') ────>│──> fan-out to all peers ────>│
+       │<── patches arrive via WebSocket ────────│                              │
 ```
+
+## v2: Browser SDK (`iii-browser-sdk`)
+
+spec-forge is a standard iii worker. From any browser-sdk project, just trigger its functions:
+
+```typescript
+import { registerWorker } from 'iii-browser-sdk'
+
+const iii = registerWorker('ws://localhost:49135')
+
+// Register a function to receive streaming patches
+iii.registerFunction({ id: 'ui::render-patch' }, async (data) => {
+  console.log('Patch:', data.patch)
+  return { applied: true }
+})
+
+// Generate a spec
+const spec = await iii.trigger({
+  function_id: 'spec-forge::generate',
+  payload: { prompt: 'A sales dashboard', catalog: { components: { Card: { description: 'Card' } } } }
+})
+
+// Stream (patches push to ui::render-patch)
+await iii.trigger({
+  function_id: 'spec-forge::stream',
+  payload: { prompt: 'A sales dashboard', catalog }
+})
+```
+
+### React (convenience wrapper)
+
+```tsx
+import { SpecForgeProvider, useSpecForge, Renderer } from '@iii-hq/spec-forge-react'
+
+function App() {
+  return (
+    <SpecForgeProvider engineUrl="ws://localhost:49135" catalog={catalog} registry={registry}>
+      <Dashboard />
+    </SpecForgeProvider>
+  )
+}
+
+function Dashboard() {
+  const { generate, stream, refine, spec, status } = useSpecForge()
+  return (
+    <div>
+      <button onClick={() => stream('A sales dashboard')}>Generate</button>
+      {spec && <Renderer spec={spec} registry={registry} />}
+    </div>
+  )
+}
+```
+
+### Collaborative Sessions
+
+```typescript
+// Join — all browsers in session see each other's changes
+await iii.trigger({ function_id: 'spec-forge::join-session', payload: { session_id: 'team-dashboard' } })
+
+// Generate — patches fan out to all peers
+await iii.trigger({ function_id: 'spec-forge::stream', payload: { prompt, catalog, session_id: 'team-dashboard' } })
+```
+
+### New Expressions (iii-native)
+
+| Expression | Resolves To | iii Primitive |
+|-----------|-------------|---------------|
+| `{ "$stream": "metrics/users/active" }` | Live data binding | `registerTrigger({ type: 'stream' })` |
+| `{ "$trigger": "ml::analyze" }` | Server-side action | `iii.trigger({ function_id })` |
+| `{ "$sync": "/filters/region" }` | Collaborative state | `iii.trigger('state::set')` + state triggers |
+| `{ "$push": "alerts" }` | Server-push slot | `registerFunction('ui::render-patch')` |
+
+### Supported Renderers (via json-render)
+
+| Renderer | Package |
+|----------|---------|
+| Web UI | `@json-render/react` |
+| 3D scenes | `@json-render/react-three-fiber` (43 Three.js components) |
+| PDF | `@json-render/react-pdf` |
+| Email | `@json-render/react-email` |
+| Video | `@json-render/remotion` |
+| Terminal | `@json-render/ink` |
+| Mobile | `@json-render/react-native` |
+| Next.js apps | `@json-render/next` |
+| shadcn/ui | `@json-render/shadcn` (36 components) |
 
 ## Why
 
-json-render calls the LLM on every request. No caching, no streaming, no rate limiting. API key exposed to client.
-
-spec-forge is a pure iii-sdk worker that streams JSONL patches (RFC 6902) through iii Channels — each patch arrives at the browser via WebSocket the moment Claude generates it, so the UI fills in progressively.
-
-| | json-render | spec-forge + iii |
+| | json-render | spec-forge v2 + iii |
 |---|---|---|
-| Architecture | Client-side LLM calls | iii worker with HTTP triggers |
-| Output format | Full JSON response | JSONL patches (RFC 6902) |
-| Streaming | Vercel AI SDK `streamText` | iii Channels (WebSocket) |
+| Architecture | Client-side LLM calls | iii worker + browser-sdk |
+| Direction | One-way (browser → LLM) | Bi-directional (backend pushes to browser) |
+| Collaboration | Single user | Multi-user real-time sessions |
+| Transport | HTTP + SSE | Single persistent WebSocket |
+| Streaming | Vercel AI SDK `streamText` | `registerFunction` + `TriggerAction::Void` |
 | First paint | After full LLM response | After first patch (~200ms) |
-| 3D scenes | Not supported | 43 Three.js components, live preview |
+| 3D scenes | Not supported | 43 Three.js components |
 | Cache | None | SHA-256 exact + TF-IDF semantic |
-| Repeat request | 3-5s LLM call | **0ms** cached |
+| Cached request | 3-5s (re-calls LLM) | **~2ms** |
 | Rate limiting | None | Token bucket + concurrency semaphore |
-| API key | Client-side | Server-side only |
-| Observability | None | OpenTelemetry (built-in via iii) |
+| API key | Client-side exposed | Server-side only |
+| State | Local, ephemeral | iii state — persistent, cross-browser |
+| Actions | Client-side JS only | Any language (Rust, Python, TS) via iii functions |
+| Observability | None | OpenTelemetry built-in |
+| Server push | Impossible | Backend pushes patches anytime |
 
 ## Benchmarks
 
