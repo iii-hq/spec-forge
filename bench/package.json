@@ -1,0 +1,15 @@
+{
+  "name": "bench",
+  "version": "1.0.0",
+  "description": "Comprehensive benchmarks comparing [spec-forge](https://github.com/iii-hq/spec-forge) (Rust iii-sdk worker) against [json-render](https://github.com/vercel-labs/json-render) (Vercel Labs, JS/TS).",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@json-render/core": "^0.16.0"
+  }
+}
