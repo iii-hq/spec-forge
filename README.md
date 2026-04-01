@@ -200,15 +200,48 @@ src/
 
 ## Benchmarks
 
-| Operation | spec-forge | json-render |
-|-----------|------------|-------------|
-| Cached request | **< 1 µs** | 3-5s (no cache) |
-| First paint (streaming) | ~200ms | ~500ms |
-| JSONL parsing (9 patches) | 10.1 µs | 16.8 µs |
-| Validation (500 elements) | 74 µs (Rust) | 112 µs (JS) |
+Real numbers. json-render measured with `@json-render/core` calling Claude API directly (how it works in production). spec-forge measured through iii engine + Rust worker.
+
+### Generate
+
+| | spec-forge + iii | json-render (Vercel) | |
+|---|---|---|---|
+| Cold (cache miss) | **7.2s** | 10.3s | 1.4x faster |
+| Repeat request | **1.8ms** | 10.1s (re-calls LLM) | **5600x faster** |
+| 3rd request | **1.8ms** | 9.7s (still re-calls) | **5400x faster** |
+
+json-render has no caching. Every request is a full LLM round-trip.
+
+### Collaboration
+
+| | spec-forge + iii | json-render |
+|---|---|---|
+| Session join | **1.3ms** | impossible |
+| Fan-out to 6 peers | **941µs** | impossible |
+| Session state restore | **2.2ms** | impossible |
+| Server push to browser | **< 1ms** | impossible |
+| Persistent spec across tabs | **yes** | no |
+
+### Transport
+
+| | spec-forge (WebSocket) | json-render (HTTP) |
+|---|---|---|
+| Connection overhead | 0ms (persistent) | ~80ms per request |
+| Cached round-trip | **1.8ms** | N/A |
+| Stream trigger | **1.3ms** | N/A |
+
+### Security
+
+| | spec-forge | json-render |
+|---|---|---|
+| API key | Server-side (Rust worker) | Requires server wrapper to protect |
+| Rate limiting | Built-in (token bucket) | None |
+| Observability | OpenTelemetry | None |
 
 ```bash
-./bench/run.sh  # Run all benchmarks
+./bench/run.sh       # Run v2 benchmarks (requires engine + worker)
+./bench/run.sh rust  # Rust-only micro-benchmarks
+./bench/run.sh all   # Everything
 ```
 
 ## Configuration
