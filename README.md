@@ -10,15 +10,19 @@ Built on [json-render](https://github.com/vercel-labs/json-render) for rendering
 
 spec-forge is a standard iii worker. It registers functions and triggers. You call them.
 
-```
-Browser                              iii engine                    spec-forge worker
-   │                                    │                               │
-   ├─ iii.trigger('spec-forge::        │                               │
-   │   generate', { prompt, catalog }) ─┤──> routes to worker ────────>│──> Claude API
-   │                                    │                               │
-   │                                    │<── patches stream back ──────│
-   │<── ui::render-patch ──────────────│    (fan-out to all peers)     │
-   │    each patch = 1 component        │                               │
+```mermaid
+sequenceDiagram
+    participant B as Browser (iii-browser-sdk)
+    participant E as iii Engine
+    participant W as spec-forge Worker
+    participant C as Claude API
+
+    B->>E: iii.trigger('spec-forge::stream', { prompt, catalog })
+    E->>W: routes to registered function
+    W->>C: streaming request
+    C-->>W: JSONL patches (one per component)
+    W-->>E: fan-out to all session peers
+    E-->>B: ui::render-patch (each patch renders instantly)
 ```
 
 ### From the Browser
@@ -148,22 +152,34 @@ spec-forge generates [json-render](https://github.com/vercel-labs/json-render) s
 
 ## Architecture
 
-```
-iii-engine
-├── WorkerModule :49134     ← backend workers (Rust, Python, TS)
-├── WorkerModule :49135     ← browser workers (RBAC: expose_functions)
-├── RestApiModule :3111     ← HTTP triggers
-├── StateModule             ← session state (peers, specs, history)
-├── StreamModule :3113      ← real-time streams
-└── PubSubModule            ← event fan-out
+```mermaid
+graph LR
+    subgraph iii engine
+        API[RestApiModule :3111]
+        W1[WorkerModule :49134<br/>backend workers]
+        W2[WorkerModule :49135<br/>browser workers RBAC]
+        ST[StateModule<br/>session state]
+        SM[StreamModule :3113]
+    end
 
-spec-forge worker (Rust, connects to :49134)
-├── generate    cache → semantic → rate limit → Claude → validate → store
-├── stream      generate + fan-out patches to session peers
-├── refine      JSONL patch-based incremental changes
-├── validate    spec validation against catalog
-├── session     join, leave, peer tracking, fan-out
-└── catalogs    6 built-in presets (4 UI + 2 3D)
+    subgraph spec-forge worker
+        GEN[generate]
+        STR[stream + fan-out]
+        REF[refine]
+        SES[session join/leave]
+    end
+
+    subgraph browsers
+        B1[Tab 1]
+        B2[Tab 2]
+    end
+
+    B1 -->|iii-browser-sdk| W2
+    B2 -->|iii-browser-sdk| W2
+    GEN -->|iii.trigger| W1
+    STR -->|fan-out patches| W2
+    W1 --- ST
+    API -->|HTTP triggers| GEN
 ```
 
 ### Source
