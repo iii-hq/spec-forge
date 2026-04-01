@@ -6,3 +6,4 @@ node_modules
 .DS_Store
 client/dist
 docs/
+package-lock.json
