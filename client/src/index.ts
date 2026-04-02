@@ -28,6 +28,7 @@ export function createSpecForge(iii: any, opts: SpecForgeOptions): SpecForge {
   const scope = opts.scope ?? "spec-forge"
   const catalog = opts.catalog
   const model = opts.model ?? "claude-sonnet-4-20250514"
+  const workerId = opts.workerId ?? `sf-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
   let sessionId: string | null = null
   let sessionTriggerRef: { unregister: () => void } | null = null
 
@@ -37,7 +38,7 @@ export function createSpecForge(iii: any, opts: SpecForgeOptions): SpecForge {
   const refs: Array<{ unregister: () => void }> = []
 
   refs.push(
-    iii.registerFunction({ id: "ui::render-patch" }, async (data: PatchEvent) => {
+    iii.registerFunction({ id: `ui::render-patch::${workerId}` }, async (data: PatchEvent) => {
       opts.onPatch?.(data)
       return { applied: true }
     }),
@@ -84,14 +85,14 @@ export function createSpecForge(iii: any, opts: SpecForgeOptions): SpecForge {
     async generate(prompt: string, mdl?: string) {
       return iii.trigger({
         function_id: "spec-forge::generate",
-        payload: { prompt, catalog, model: mdl ?? model, session_id: sessionId },
+        payload: { prompt, catalog, model: mdl ?? model, session_id: sessionId, origin_peer: workerId },
       })
     },
 
     async stream(prompt: string, mdl?: string) {
       return iii.trigger({
         function_id: "spec-forge::stream",
-        payload: { prompt, catalog, model: mdl ?? model, session_id: sessionId },
+        payload: { prompt, catalog, model: mdl ?? model, session_id: sessionId, origin_peer: workerId },
       })
     },
 
@@ -123,7 +124,7 @@ export function createSpecForge(iii: any, opts: SpecForgeOptions): SpecForge {
       })
       await iii.trigger({
         function_id: "spec-forge::join-session",
-        payload: { session_id: sid },
+        payload: { session_id: sid, worker_id: workerId },
       })
       sessionId = sid
       sessionTriggerRef = triggerRef
@@ -133,7 +134,7 @@ export function createSpecForge(iii: any, opts: SpecForgeOptions): SpecForge {
       if (!sessionId) return
       await iii.trigger({
         function_id: "spec-forge::leave-session",
-        payload: { session_id: sessionId },
+        payload: { session_id: sessionId, worker_id: workerId },
       })
       if (sessionTriggerRef) {
         sessionTriggerRef.unregister()

@@ -372,7 +372,7 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
                 let req: ApiRequest<PushPatchRequest> = serde_json::from_value(input)
                     .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
                 req.body.validate().map_err(|e| IIIError::Handler(e))?;
-                session::fan_out_patch(&s.iii, &req.body.session_id, &req.body.patch, req.body.target.as_deref())
+                session::fan_out_patch(&s.iii, &req.body.session_id, &req.body.patch, req.body.origin_peer.as_deref())
                     .await
                     .map_err(|e| IIIError::Handler(e.to_string()))?;
                 Ok(serde_json::to_value(ApiResponse {
@@ -748,8 +748,8 @@ async fn refine_core(s: &SharedState, req: RefineInput) -> Result<Value, (u16, V
                     "patch_count": 0,
                     "generation_ms": elapsed,
                     "model": req.model,
-                    "valid": true,
-                    "warnings": ["No changes needed — spec already matches the request"],
+                    "valid": false,
+                    "warnings": ["Failed to extract spec or patches from LLM response"],
                 }));
             }
         }
@@ -801,10 +801,9 @@ async fn stream_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (u1
             .await
             .ok();
 
-        // If in session mode, push cached spec to all peers
         if let Some(ref sid) = session_id {
             let done_msg = json!({"type": "done", "spec": spec, "valid": true, "generation_ms": 0});
-            session::fan_out_patch(&s.iii, sid, &done_msg, None).await.ok();
+            session::fan_out_patch(&s.iii, sid, &done_msg, req.origin_peer.as_deref()).await.ok();
             session::store_spec(&s.iii, sid, &json!(spec), "cached").await.ok();
         }
 
@@ -841,12 +840,13 @@ async fn stream_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (u1
     let prompt_str = req.prompt.clone();
     let catalog_hash = SpecCache::cache_key("", &catalog_json);
     let iii_clone = s.iii.clone();
+    let origin_peer = req.origin_peer.clone();
 
     tokio::spawn(async move {
         let start = std::time::Instant::now();
         let sid_clone = session_id.clone();
         let iii_for_patches = iii_clone.clone();
-        match call_claude_streaming(&http, &api_key, &model, &prompt_text, &writer, max_tokens, sid_clone.as_deref(), &iii_for_patches).await {
+        match call_claude_streaming(&http, &api_key, &model, &prompt_text, &writer, max_tokens, sid_clone.as_deref(), &iii_for_patches, origin_peer.as_deref()).await {
             Ok(spec) => {
                 let errors = validate::validate_spec(&spec, &catalog);
                 let elapsed = start.elapsed().as_millis() as u64;
@@ -863,10 +863,11 @@ async fn stream_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (u1
                 });
                 writer.send_message(&done_msg.to_string()).await.ok();
 
-                // Session mode: fan out patches to all peers
                 if let Some(ref sid) = session_id {
-                    session::fan_out_patch(&iii_clone, sid, &done_msg, None).await.ok();
-                    session::store_spec(&iii_clone, sid, &json!(spec), "browser").await.ok();
+                    session::fan_out_patch(&iii_clone, sid, &done_msg, origin_peer.as_deref()).await.ok();
+                    if errors.is_empty() {
+                        session::store_spec(&iii_clone, sid, &json!(spec), "browser").await.ok();
+                    }
                 }
 
                 streams.increment("spec-forge::metrics::generate", "count", 1).await.ok();
@@ -876,7 +877,7 @@ async fn stream_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (u1
                 let err_msg = json!({"type": "error", "error": e});
                 writer.send_message(&err_msg.to_string()).await.ok();
                 if let Some(ref sid) = session_id {
-                    session::fan_out_patch(&iii_clone, sid, &err_msg, None).await.ok();
+                    session::fan_out_patch(&iii_clone, sid, &err_msg, origin_peer.as_deref()).await.ok();
                 }
             }
         }
@@ -901,6 +902,7 @@ async fn call_claude_streaming(
     max_tokens: u32,
     session_id: Option<&str>,
     iii: &III,
+    origin_peer: Option<&str>,
 ) -> Result<UISpec, String> {
     let body = json!({
         "model": model,
@@ -964,7 +966,7 @@ async fn call_claude_streaming(
                                     let msg = json!({"type": "patch", "patch": patch});
                                     writer.send_message(&msg.to_string()).await.ok();
                                     if let Some(sid) = session_id {
-                                        session::fan_out_patch(iii, sid, &msg, None).await.ok();
+                                        session::fan_out_patch(iii, sid, &msg, origin_peer).await.ok();
                                     }
                                 }
                             }
@@ -988,7 +990,7 @@ async fn call_claude_streaming(
             let msg = json!({"type": "patch", "patch": patch});
             writer.send_message(&msg.to_string()).await.ok();
             if let Some(sid) = session_id {
-                session::fan_out_patch(iii, sid, &msg, None).await.ok();
+                session::fan_out_patch(iii, sid, &msg, origin_peer).await.ok();
             }
         }
     }

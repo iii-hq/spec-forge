@@ -19,6 +19,8 @@ pub struct GenerateRequest {
     pub max_tokens: u32,
     #[serde(default)]
     pub session_id: Option<String>,
+    #[serde(default)]
+    pub origin_peer: Option<String>,
 }
 
 pub fn default_max_tokens() -> u32 {
@@ -88,7 +90,7 @@ pub struct LeaveSessionRequest {
 pub struct PushPatchRequest {
     pub session_id: String,
     #[serde(default)]
-    pub target: Option<String>,
+    pub origin_peer: Option<String>,
     #[serde(default)]
     pub patch: serde_json::Value,
 }
