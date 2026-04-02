@@ -7,3 +7,4 @@ node_modules
 client/dist
 docs/
 package-lock.json
+data/
