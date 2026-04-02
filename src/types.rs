@@ -83,6 +83,8 @@ pub struct JoinSessionRequest {
 pub struct LeaveSessionRequest {
     #[serde(default)]
     pub session_id: String,
+    #[serde(default)]
+    pub worker_id: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

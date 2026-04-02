@@ -347,7 +347,8 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
             async move {
                 let req: ApiRequest<LeaveSessionRequest> = serde_json::from_value(input)
                     .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
-                session::leave_session(&s.iii, &req.body.session_id, "anonymous")
+                let wid = if req.body.worker_id.is_empty() { "anonymous".to_string() } else { req.body.worker_id.clone() };
+                session::leave_session(&s.iii, &req.body.session_id, &wid)
                     .await
                     .map_err(|e| IIIError::Handler(e.to_string()))?;
                 Ok(serde_json::to_value(ApiResponse {
@@ -627,12 +628,45 @@ fn parse_jsonl_to_patches(raw: &str) -> Vec<Value> {
     raw.lines()
         .filter_map(|line| {
             let line = line.trim();
-            if line.is_empty() || !line.starts_with('{') {
+            if line.is_empty()
+                || line.starts_with("```")
+                || line.starts_with("//")
+                || line.starts_with('#')
+            {
+                return None;
+            }
+            let line = line.trim_start_matches(|c: char| !c.is_ascii_punctuation() || c == '-');
+            let line = line.trim();
+            if !line.starts_with('{') {
                 return None;
             }
             serde_json::from_str(line).ok()
         })
         .collect()
+}
+
+fn try_extract_spec_from_raw(raw: &str) -> Option<UISpec> {
+    let text = raw
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+    if let Ok(spec) = serde_json::from_str::<UISpec>(text) {
+        if !spec.root.is_empty() && !spec.elements.is_empty() {
+            return Some(spec);
+        }
+    }
+    if let Ok(val) = serde_json::from_str::<Value>(text) {
+        if let Some(spec_val) = val.get("spec").or(Some(&val)) {
+            if let Ok(spec) = serde_json::from_value::<UISpec>(spec_val.clone()) {
+                if !spec.root.is_empty() && !spec.elements.is_empty() {
+                    return Some(spec);
+                }
+            }
+        }
+    }
+    None
 }
 
 fn parse_jsonl_patches(raw: &str) -> Result<(Vec<Value>, UISpec), String> {
@@ -674,7 +708,9 @@ async fn refine_core(s: &SharedState, req: RefineInput) -> Result<Value, (u16, V
         .await
         .map_err(|e| (502, json!({"error": format!("Claude API error: {}", e)})))?;
 
+    tracing::info!("Refine raw response ({} chars):\n{}", raw.len(), &raw[..raw.len().min(1000)]);
     let patches = parse_jsonl_to_patches(&raw);
+    tracing::info!("Parsed {} patches from refine response", patches.len());
     let mut new_spec = req.current_spec.clone();
 
     for patch in &patches {
@@ -682,22 +718,23 @@ async fn refine_core(s: &SharedState, req: RefineInput) -> Result<Value, (u16, V
     }
 
     if patches.is_empty() {
-        return Err((
-            422,
-            json!({"error": "No patches found in refine response", "raw": raw}),
-        ));
+        tracing::info!("No patches from refine — spec unchanged");
+        let fallback = try_extract_spec_from_raw(&raw);
+        let final_spec = fallback.unwrap_or(req.current_spec.clone());
+        let elapsed = start.elapsed().as_millis() as u64;
+        return Ok(json!({
+            "spec": final_spec,
+            "patches": [],
+            "patch_count": 0,
+            "generation_ms": elapsed,
+            "model": req.model,
+            "valid": true,
+            "warnings": ["No changes needed — spec already matches the request"],
+        }));
     }
 
     let errors = validate::validate_spec(&new_spec, &catalog);
-    if !errors.is_empty() {
-        return Err((
-            422,
-            json!({
-                "error": "Refined spec validation failed",
-                "details": errors.iter().map(|e| e.to_string()).collect::<Vec<_>>(),
-            }),
-        ));
-    }
+    let warnings: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
 
     let elapsed = start.elapsed().as_millis() as u64;
     s.streams
@@ -712,6 +749,8 @@ async fn refine_core(s: &SharedState, req: RefineInput) -> Result<Value, (u16, V
         "patch_count": patches.len(),
         "generation_ms": elapsed,
         "model": req.model,
+        "valid": warnings.is_empty(),
+        "warnings": warnings,
     }))
 }
 

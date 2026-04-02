@@ -106,18 +106,22 @@ pub async fn fan_out_patch(
         .unwrap_or(json!([]));
 
     let peers: Vec<String> = serde_json::from_value(peers_val).unwrap_or_default();
+    tracing::info!("Fan-out to {} peers: {:?}", peers.len(), peers);
 
-    // Trigger each peer's unique function: ui::render-patch::{browser_id}
     for peer in &peers {
         let fn_id = format!("ui::render-patch::{}", peer);
-        let _ = iii
+        match iii
             .trigger(TriggerRequest {
-                function_id: fn_id,
+                function_id: fn_id.clone(),
                 payload: json!({ "patch": patch, "session": session_id }),
                 action: Some(TriggerAction::Void),
                 timeout_ms: None,
             })
-            .await;
+            .await
+        {
+            Ok(_) => tracing::debug!("Fan-out to {} OK", fn_id),
+            Err(e) => tracing::warn!("Fan-out to {} FAILED: {}", fn_id, e),
+        }
     }
 
     Ok(())

@@ -1205,10 +1205,13 @@
     <div class="pg-toolbar">
       <input type="text" id="prompt" placeholder="Describe a UI or 3D scene..." value="A dashboard with three metric cards showing revenue, users, and orders, plus a data table below" />
       <button class="btn btn-sm btn-outline" onclick="toggleDrawer()">Catalog</button>
-      <button class="btn btn-sm btn-outline" id="refineBtn" onclick="doRefine()" disabled>Refine</button>
       <button class="send-btn" id="streamBtn" onclick="doStream()" title="Stream (Enter)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
       </button>
+    </div>
+    <div id="refineBar" class="pg-toolbar" style="display:none;border-top:none;padding-top:0">
+      <input type="text" id="refinePrompt2" placeholder="Refine: e.g. Add a search bar, make heading red..." style="flex:1" />
+      <button class="btn btn-sm" id="refineBtn" onclick="doRefine()" style="background:var(--primary);color:var(--light);border:none">Refine</button>
     </div>
 
     <div style="display:flex;gap:8px;padding:8px 16px;border-bottom:1px solid var(--medium-dark);background:var(--dark2);flex-wrap:wrap;align-items:center">
@@ -1868,7 +1871,8 @@ function renderStreamElement(spec, id) {
 
 // iii-browser-sdk — single WebSocket, all primitives
 const III_ENGINE = "ws://" + (window.location.hostname || "localhost") + ":49135";
-const BROWSER_ID = "browser-" + Math.random().toString(36).slice(2, 8);
+const BROWSER_ID = sessionStorage.getItem("spec-forge-browser-id") || ("browser-" + Math.random().toString(36).slice(2, 8));
+sessionStorage.setItem("spec-forge-browser-id", BROWSER_ID);
 let iii = null;
 let iiiConnected = false;
 
@@ -1878,9 +1882,45 @@ async function initIII() {
     const mod = await import("https://cdn.jsdelivr.net/npm/iii-browser-sdk@0.10.0-beta.4/dist/index.mjs");
     iii = mod.registerWorker(III_ENGINE);
 
-    // Each browser registers a UNIQUE function ID so multiple tabs can coexist
     iii.registerFunction({ id: "ui::render-patch::" + BROWSER_ID }, async (data) => {
-      handlePatchEvent(data);
+      const msg = (data.patch && data.session && !data.type) ? data.patch : data;
+
+      if (msg.type === "patch" && msg.patch) {
+        if (!_peerStreaming) {
+          _peerStreaming = true;
+          streamPartialSpec = { root: "", elements: {} };
+          streamPatchCount = 0;
+          setBadge("streaming", "PEER STREAMING");
+          document.getElementById("jsonPanel").innerHTML = '<div class="json-placeholder">Receiving patches from peer...</div>';
+        }
+        streamPatchCount++;
+        applyPatch(streamPartialSpec, msg.patch);
+        if (streamPartialSpec.root && Object.keys(streamPartialSpec.elements).length > 0) {
+          document.getElementById("jsonPanel").innerHTML = syntaxHighlight(JSON.stringify(streamPartialSpec, null, 2)) + '<span class="cursor"></span>';
+          document.getElementById("jsonPanel").scrollTop = document.getElementById("jsonPanel").scrollHeight;
+          const previewPanel = document.getElementById("previewPanel");
+          previewPanel.style.padding = "24px";
+          const frag = document.createDocumentFragment();
+          const el = renderStreamElement(streamPartialSpec, streamPartialSpec.root);
+          if (el) frag.appendChild(el);
+          previewPanel.replaceChildren(frag);
+        }
+        setBadge("streaming", streamPatchCount + " PATCHES (peer)");
+      } else if (msg.type === "done") {
+        _peerStreaming = false;
+        currentSpec = msg.spec || streamPartialSpec;
+        document.getElementById("jsonPanel").innerHTML = syntaxHighlight(JSON.stringify(currentSpec, null, 2));
+        renderSpec(currentSpec);
+        const n = Object.keys(currentSpec.elements || {}).length;
+        setBadge("done", streamPatchCount + " PATCHES \u00b7 " + n + " ELEMENTS");
+        document.getElementById("refineBtn").disabled = false; document.getElementById("refineBar").style.display = "flex";
+        addStreamLog("peer-done", { patches: streamPatchCount, elements: n });
+      } else if (msg.type === "error") {
+        _peerStreaming = false;
+        setBadge("done", "PEER ERROR");
+        addStreamLog("peer-error", { error: msg.error });
+      }
+
       return { applied: true };
     });
 
@@ -1910,6 +1950,7 @@ async function initIII() {
 let streamPartialSpec = { root: "", elements: {} };
 let streamPatchCount = 0;
 let streamGenerationMs = 0;
+let _peerStreaming = false;
 
 function handlePatchEvent(rawMsg) {
   // Fan-out wraps messages as { patch: <actual_msg>, session: "..." }
@@ -1928,9 +1969,10 @@ function handlePatchEvent(rawMsg) {
       jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(streamPartialSpec, null, 2)) + '<span class="cursor"></span>';
       jsonPanel.scrollTop = jsonPanel.scrollHeight;
       previewPanel.style.padding = "24px";
-      previewPanel.innerHTML = "";
+      const frag = document.createDocumentFragment();
       const el = renderStreamElement(streamPartialSpec, streamPartialSpec.root);
-      if (el) previewPanel.appendChild(el);
+      if (el) frag.appendChild(el);
+      previewPanel.replaceChildren(frag);
     }
     setBadge("streaming", streamPatchCount + " PATCHES");
   } else if (msg.type === "done") {
@@ -1939,7 +1981,7 @@ function handlePatchEvent(rawMsg) {
     addStreamLog("done", { patches: streamPatchCount, ms: streamGenerationMs, valid: msg.valid });
     if (msg.errors && msg.errors.length) addStreamLog("warn", { errors: msg.errors });
 
-    document.getElementById("refineBtn").disabled = false;
+    document.getElementById("refineBtn").disabled = false; document.getElementById("refineBar").style.display = "flex";
     jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(currentSpec, null, 2));
     renderSpec(currentSpec);
     const n = Object.keys(currentSpec.elements).length;
@@ -1993,7 +2035,7 @@ async function joinSession() {
       currentSpec = typeof info.spec === "string" ? JSON.parse(info.spec) : info.spec;
       document.getElementById("jsonPanel").innerHTML = syntaxHighlight(JSON.stringify(currentSpec, null, 2));
       renderSpec(currentSpec);
-      document.getElementById("refineBtn").disabled = false;
+      document.getElementById("refineBtn").disabled = false; document.getElementById("refineBar").style.display = "flex";
       addStreamLog("session", { action: "joined", id: sid, spec: "loaded from session" });
     } else {
       addStreamLog("session", { action: "joined", id: sid, spec: "empty" });
@@ -2009,7 +2051,7 @@ async function leaveSession() {
   try {
     await iii.trigger({
       function_id: "spec-forge::leave-session",
-      payload: { body: { session_id: currentSessionId }, headers: {}, path_params: {}, query_params: {} },
+      payload: { body: { session_id: currentSessionId, worker_id: BROWSER_ID }, headers: {}, path_params: {}, query_params: {} },
     });
   } catch (e) { /* ignore */ }
 
@@ -2078,7 +2120,7 @@ async function doStream() {
         addStreamLog("cached", { elements: Object.keys(currentSpec.elements).length });
         jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(currentSpec, null, 2));
         renderSpec(currentSpec);
-        document.getElementById("refineBtn").disabled = false;
+        document.getElementById("refineBtn").disabled = false; document.getElementById("refineBar").style.display = "flex";
         const n = Object.keys(currentSpec.elements).length;
         setBadge("cached", "CACHED \u00b7 " + n + " ELEMENTS \u00b7 0MS");
         setLoading(false);
@@ -2160,7 +2202,7 @@ async function doStream() {
       currentSpec = data.spec;
       jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(data.spec, null, 2));
       renderSpec(currentSpec);
-      document.getElementById("refineBtn").disabled = false;
+      document.getElementById("refineBtn").disabled = false; document.getElementById("refineBar").style.display = "flex";
       const n = Object.keys(data.spec.elements).length;
       setBadge("cached", "CACHED \u00b7 " + n + " ELEMENTS \u00b7 0MS");
       setLoading(false);
@@ -2236,7 +2278,7 @@ async function doGenerate() {
     currentSpec = data.spec;
     document.getElementById("jsonPanel").innerHTML = syntaxHighlight(JSON.stringify(data.spec, null, 2));
     renderSpec(currentSpec);
-    document.getElementById("refineBtn").disabled = false;
+    document.getElementById("refineBtn").disabled = false; document.getElementById("refineBar").style.display = "flex";
     const n = Object.keys(data.spec.elements).length;
     setBadge(data.cached ? "cached" : "done", n + " ELEMENTS \u00b7 " + data.generation_ms + "MS" + (data.cached ? " \u00b7 CACHED" : ""));
   } catch (e) {
@@ -2249,8 +2291,8 @@ async function doRefine() {
   if (!currentSpec) return;
   const catalog = getCatalog();
   if (!catalog) { toggleDrawer(); return; }
-  const prompt = document.getElementById("refinePrompt").value.trim() || document.getElementById("prompt").value.trim();
-  if (!prompt) return;
+  const prompt = document.getElementById("refinePrompt2").value.trim() || document.getElementById("refinePrompt").value.trim();
+  if (!prompt) { document.getElementById("refinePrompt2").focus(); document.getElementById("refinePrompt2").placeholder = "Type a change here first..."; return; }
 
   setLoading(true);
   setBadge("streaming", "REFINING");
@@ -2258,35 +2300,51 @@ async function doRefine() {
   try {
     let data;
 
-    await initIII();
-    if (iii && iiiConnected) {
-      const result = await iii.trigger({
-        function_id: "api::post::spec-forge::refine",
-        payload: { body: { prompt, current_spec: currentSpec, catalog }, headers: {}, path_params: {}, query_params: {} },
-      });
-      data = result.body || result;
-      if (data.error) {
-        setBadge("done", "ERROR");
-        document.getElementById("jsonPanel").innerHTML = '<span style="color:var(--red)">' + data.error + '</span>';
-        setLoading(false);
-        return;
-      }
-    } else {
-      const res = await fetch(ENGINE + "/spec-forge/refine", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, current_spec: currentSpec, catalog }),
-      });
-      data = await res.json();
-      if (!res.ok) { setBadge("done", "ERROR"); document.getElementById("jsonPanel").innerHTML = '<span style="color:var(--red)">' + data.error + '</span>'; return; }
+    const res = await fetch(ENGINE + "/spec-forge/refine", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, current_spec: currentSpec, catalog }),
+    });
+    data = await res.json();
+    console.log("[refine] response:", res.status, data);
+    console.log("[refine] sent:", { prompt, current_spec: currentSpec, catalog });
+    if (!res.ok) {
+      setBadge("done", "ERROR");
+      document.getElementById("jsonPanel").innerHTML = '<span style="color:var(--red)">' + (data.error || "Refine failed") + (data.raw ? '<br><br>Raw: ' + data.raw.substring(0, 500) : '') + '</span>';
+      setLoading(false);
+      return;
     }
 
+    const oldKeys = new Set(Object.keys(currentSpec?.elements || {}));
     currentSpec = data.spec;
+    const newKeys = new Set(Object.keys(currentSpec.elements || {}));
+    const added = [...newKeys].filter(k => !oldKeys.has(k));
+    const removed = [...oldKeys].filter(k => !newKeys.has(k));
+
     document.getElementById("jsonPanel").innerHTML = syntaxHighlight(JSON.stringify(data.spec, null, 2));
     renderSpec(currentSpec);
-    setBadge("done", data.patch_count + " PATCHES \u00b7 " + data.generation_ms + "MS");
+
+    if (added.length || removed.length) {
+      for (const key of added) {
+        const el = document.querySelector('[data-id="' + key + '"]');
+        if (el) { el.style.outline = "2px solid var(--green)"; el.style.outlineOffset = "2px"; setTimeout(() => { el.style.outline = ""; el.style.outlineOffset = ""; }, 2000); }
+      }
+    }
+
+    const elCount = Object.keys(currentSpec.elements || {}).length;
+    const changes = [];
+    if (added.length) changes.push("+" + added.length + " added");
+    if (removed.length) changes.push("-" + removed.length + " removed");
+    const changeStr = changes.length ? " (" + changes.join(", ") + ")" : "";
+    setBadge("done", data.patch_count + " PATCHES \u00b7 " + elCount + " ELEMENTS \u00b7 " + data.generation_ms + "MS" + changeStr);
+    addStreamLog("refined", { patches: data.patch_count, elements: elCount, added: added, removed: removed, ms: data.generation_ms });
     document.getElementById("refinePrompt").value = "";
-  } catch (e) { setBadge("done", "ERROR"); }
+    document.getElementById("refinePrompt2").value = "";
+  } catch (e) {
+    console.error("[refine] error:", e);
+    setBadge("done", "ERROR");
+    document.getElementById("jsonPanel").innerHTML = '<span style="color:var(--red)">Refine failed: ' + (e.message || e) + '</span>';
+  }
   finally { setLoading(false); }
 }
 
@@ -2746,14 +2804,12 @@ window.render3DScene = function(spec, container) {
 };
 
 
-// Leave session on tab close
 window.addEventListener("beforeunload", () => {
-  if (currentSessionId && iii) {
-    iii.trigger({
-      function_id: "spec-forge::leave-session",
-      payload: { body: { session_id: currentSessionId }, headers: {}, path_params: {}, query_params: {} },
-      action: { type: "void" },
-    });
+  if (currentSessionId) {
+    navigator.sendBeacon(
+      ENGINE + "/spec-forge/leave",
+      new Blob([JSON.stringify({ session_id: currentSessionId, worker_id: BROWSER_ID })], { type: "application/json" })
+    );
   }
 });
 
