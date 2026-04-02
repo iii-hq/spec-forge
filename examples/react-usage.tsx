@@ -1,17 +1,15 @@
 /**
- * Example: Using iii-render with json-render's React <Render> component
+ * Example: Using spec-forge with json-render's React <Render> component
  *
- * npm install @iii-dev/render-client @anthropic-ai/json-render-react
+ * npm install @iii-hq/spec-forge @json-render/react iii-browser-sdk
  */
 
-import { useState, useCallback } from "react";
-import { Render } from "@anthropic-ai/json-render-react";
-import { IIIRenderClient } from "@iii-dev/render-client";
-import type { UISpec, Catalog } from "@iii-dev/render-client";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { Render } from "@json-render/react";
+import { createSpecForge, type SpecForge } from "@iii-hq/spec-forge";
+import type { SpecForgeCatalog } from "@iii-hq/spec-forge";
 
-const client = new IIIRenderClient({ baseUrl: "http://localhost:3112" });
-
-const catalog: Catalog = {
+const catalog: SpecForgeCatalog = {
   components: {
     Card: { description: "Container card", props: { title: "string" }, children: true },
     Metric: { description: "Metric display", props: { label: "string", value: "string" } },
@@ -26,28 +24,45 @@ const catalog: Catalog = {
   },
 };
 
-export function GenerativeUI() {
-  const [spec, setSpec] = useState<UISpec | null>(null);
+/**
+ * Assumes `iii` is a pre-initialized iii-browser-sdk connection
+ * (e.g. from `await initIII('ws://localhost:49135')`)
+ */
+export function GenerativeUI({ iii }: { iii: any }) {
+  const [spec, setSpec] = useState<Record<string, unknown> | null>(null);
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [refineText, setRefineText] = useState("");
+  const sfRef = useRef<SpecForge | null>(null);
+
+  useEffect(() => {
+    const sf = createSpecForge(iii, {
+      catalog,
+      onPatch: (data) => {
+        if (data.patch?.spec) setSpec(data.patch.spec);
+      },
+    });
+    sfRef.current = sf;
+    return () => { sf.shutdown(); };
+  }, [iii]);
 
   const generate = useCallback(async () => {
+    if (!sfRef.current) return;
     setLoading(true);
     try {
-      const res = await client.generate(prompt, catalog);
-      setSpec(res.spec);
+      const res = await sfRef.current.generate(prompt);
+      if (res.spec) setSpec(res.spec);
     } finally {
       setLoading(false);
     }
   }, [prompt]);
 
   const refine = useCallback(async () => {
-    if (!spec) return;
+    if (!sfRef.current || !spec) return;
     setLoading(true);
     try {
-      const res = await client.refine(refineText, spec, catalog);
-      setSpec(res.spec);
+      const res = await sfRef.current.refine(refineText, spec);
+      if (res.spec) setSpec(res.spec);
       setRefineText("");
     } finally {
       setLoading(false);
@@ -55,26 +70,14 @@ export function GenerativeUI() {
   }, [spec, refineText]);
 
   const streamGenerate = useCallback(async () => {
+    if (!sfRef.current) return;
     setLoading(true);
     setSpec(null);
-
-    const partialSpec: UISpec = { root: "", elements: {} };
-
-    for await (const event of client.stream(prompt, catalog)) {
-      switch (event.type) {
-        case "root":
-          partialSpec.root = event.root!;
-          break;
-        case "element":
-          partialSpec.elements[event.id!] = event.element!;
-          setSpec({ ...partialSpec });
-          break;
-        case "done":
-          setSpec(event.spec!);
-          break;
-      }
+    try {
+      await sfRef.current.stream(prompt);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [prompt]);
 
   return (

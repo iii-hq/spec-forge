@@ -195,11 +195,16 @@ async function run() {
         } catch { /* ignore malformed model line */ }
       }
     }
-  } else {
-    console.log("  (ANTHROPIC_API_KEY not set — skipping LLM benchmarks)");
-    console.log("  (Set it to measure real generate latency)");
+  }
 
-    // Use dummy spec for compute benchmarks
+  if (!spec || patchLines.length === 0) {
+    if (ANTHROPIC_KEY) {
+      console.warn("  No parseable patch lines from LLM; using fallback sample patches.");
+    } else {
+      console.log("  (ANTHROPIC_API_KEY not set — skipping LLM benchmarks)");
+      console.log("  (Set it to measure real generate latency)");
+    }
+
     spec = {
       root: "main",
       elements: {

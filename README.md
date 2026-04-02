@@ -225,7 +225,7 @@ json-render has no caching. Every request is a full LLM round-trip.
 
 | | spec-forge (WebSocket) | json-render (HTTP) |
 |---|---|---|
-| Connection overhead | 0ms (persistent) | ~80ms per request |
+| Connection overhead | 0ms (WebSocket, persistent) | ~80ms per request |
 | Cached round-trip | **1.8ms** | N/A |
 | Stream trigger | **1.3ms** | N/A |
 
@@ -235,7 +235,7 @@ json-render has no caching. Every request is a full LLM round-trip.
 |---|---|---|
 | API key | Server-side (Rust worker) | Requires server wrapper to protect |
 | Rate limiting | Built-in (token bucket) | None |
-| Observability | OpenTelemetry | None |
+| Observability | OpenTelemetry (optional, off by default) | None |
 
 ```bash
 ./bench/run.sh       # Run v2 benchmarks (requires engine + worker)
