@@ -1,319 +1,152 @@
-export interface ComponentDef {
-  description: string;
-  props?: Record<string, unknown>;
-  children?: boolean;
+import { createIIIStateStore, type IIIStateStoreExtended } from "./state-store"
+import { createIIIActionRouter, type IIIActionRouter } from "./action-router"
+import { resolveExpressions } from "./expressions"
+import type { SpecForgeOptions, SpecForgeCatalog, PatchEvent, GenerateResult } from "./types"
+
+export type { SpecForgeOptions, SpecForgeCatalog, PatchEvent, GenerateResult } from "./types"
+export type { IIIStateStoreExtended } from "./state-store"
+export type { IIIActionRouter } from "./action-router"
+export { createIIIStateStore } from "./state-store"
+export { createIIIActionRouter } from "./action-router"
+export { resolveExpressions } from "./expressions"
+export { createSessionManager } from "./session"
+export * from "./types"
+
+export interface SpecForge {
+  generate(prompt: string, model?: string): Promise<GenerateResult>
+  stream(prompt: string, model?: string): Promise<void>
+  refine(prompt: string, currentSpec: Record<string, unknown>, model?: string): Promise<GenerateResult>
+  validate(spec: Record<string, unknown>): Promise<{ valid: boolean; errors: string[] }>
+  join(sessionId: string): Promise<void>
+  leave(): Promise<void>
+  stateStore: IIIStateStoreExtended
+  actionRouter: IIIActionRouter
+  shutdown(): Promise<void>
 }
 
-export interface ActionDef {
-  description: string;
-}
+export function createSpecForge(iii: any, opts: SpecForgeOptions): SpecForge {
+  const scope = opts.scope ?? "spec-forge"
+  const catalog = opts.catalog
+  const model = opts.model ?? "claude-sonnet-4-20250514"
+  const workerId = opts.workerId ?? `sf-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
+  let sessionId: string | null = null
+  let sessionTriggerRef: { unregister: () => void } | null = null
 
-export interface Catalog {
-  components: Record<string, ComponentDef>;
-  actions?: Record<string, ActionDef>;
-}
+  const stateStore = createIIIStateStore(iii, scope)
+  const actionRouter = createIIIActionRouter(iii)
 
-export interface UIElement {
-  type: string;
-  props: Record<string, unknown>;
-  children: string[];
-}
+  const refs: Array<{ unregister: () => void }> = []
 
-export interface UISpec {
-  root: string;
-  elements: Record<string, UIElement>;
-}
+  refs.push(
+    iii.registerFunction({ id: `ui::render-patch::${workerId}` }, async (data: PatchEvent) => {
+      opts.onPatch?.(data)
+      return { applied: true }
+    }),
+  )
 
-export interface GenerateResponse {
-  spec: UISpec;
-  cached: boolean;
-  generation_ms: number;
-  model: string;
-}
+  refs.push(
+    iii.registerFunction(
+      { id: "ui::state-update" },
+      async (data: { scope: string; key: string; value: unknown }) => {
+        stateStore._applyRemoteUpdate(data.key, data.value)
+        opts.onStateChange?.(data.key, data.value)
+        return { received: true }
+      },
+    ),
+  )
 
-export interface RefineResponse {
-  spec: UISpec;
-  patches: SpecPatch[];
-  patch_count: number;
-  generation_ms: number;
-  model: string;
-}
+  refs.push(
+    iii.registerFunction(
+      { id: "ui::notification" },
+      async (data: { type: string; payload: unknown }) => {
+        opts.onNotification?.(data)
+        return { displayed: true }
+      },
+    ),
+  )
 
-export interface SpecPatch {
-  op: "add" | "replace" | "remove" | "set_root";
-  id?: string;
-  element?: UIElement;
-  root?: string;
-}
+  refs.push(
+    iii.registerFunction(
+      { id: "ui::stream-update" },
+      async (data: { stream: string; group: string; item: string; value: unknown }) => {
+        stateStore._applyRemoteUpdate(
+          `/__streams__/${data.stream}/${data.group}/${data.item}`,
+          data.value,
+        )
+        return { updated: true }
+      },
+    ),
+  )
 
-export interface ValidationResult {
-  valid: boolean;
-  errors: string[];
-}
+  return {
+    stateStore,
+    actionRouter,
 
-export interface Stats {
-  rate_limiter: {
-    total_processed: number;
-    total_rejected: number;
-    current_pending: number;
-    avg_wait_us: number;
-  };
-  cache: {
-    exact_entries: number;
-  };
-}
+    async generate(prompt: string, mdl?: string) {
+      return iii.trigger({
+        function_id: "spec-forge::generate",
+        payload: { prompt, catalog, model: mdl ?? model, session_id: sessionId, origin_peer: workerId },
+      })
+    },
 
-export interface StreamEvent {
-  type: "root" | "element" | "done" | "error";
-  root?: string;
-  id?: string;
-  element?: UIElement;
-  spec?: UISpec;
-  cached?: boolean;
-  errors?: string[];
-  error?: string;
-}
+    async stream(prompt: string, mdl?: string) {
+      return iii.trigger({
+        function_id: "spec-forge::stream",
+        payload: { prompt, catalog, model: mdl ?? model, session_id: sessionId, origin_peer: workerId },
+      })
+    },
 
-export interface ClientOptions {
-  baseUrl?: string;
-  model?: string;
-}
+    async refine(prompt: string, currentSpec: Record<string, unknown>, mdl?: string) {
+      return iii.trigger({
+        function_id: "spec-forge::refine",
+        payload: {
+          prompt,
+          current_spec: currentSpec,
+          catalog,
+          model: mdl ?? model,
+          session_id: sessionId,
+        },
+      })
+    },
 
-export class IIIRenderClient {
-  private baseUrl: string;
-  private model: string;
+    async validate(spec: Record<string, unknown>) {
+      return iii.trigger({
+        function_id: "spec-forge::validate",
+        payload: { spec, catalog },
+      })
+    },
 
-  constructor(opts: ClientOptions = {}) {
-    this.baseUrl = (opts.baseUrl ?? "http://localhost:3112").replace(/\/$/, "");
-    this.model = opts.model ?? "claude-sonnet-4-20250514";
-  }
+    async join(sid: string) {
+      const triggerRef = iii.registerTrigger({
+        type: "state",
+        function_id: "ui::state-update",
+        config: { scope: `session::${sid}` },
+      })
+      await iii.trigger({
+        function_id: "spec-forge::join-session",
+        payload: { session_id: sid, worker_id: workerId },
+      })
+      sessionId = sid
+      sessionTriggerRef = triggerRef
+    },
 
-  async generate(prompt: string, catalog: Catalog, model?: string): Promise<GenerateResponse> {
-    const res = await fetch(`${this.baseUrl}/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, catalog, model: model ?? this.model }),
-    });
-    if (!res.ok) throw new Error(`Generate failed: ${res.status} ${await res.text()}`);
-    return res.json();
-  }
-
-  async *stream(
-    prompt: string,
-    catalog: Catalog,
-    model?: string
-  ): AsyncGenerator<StreamEvent, void, unknown> {
-    const res = await fetch(`${this.baseUrl}/stream`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, catalog, model: model ?? this.model }),
-    });
-    if (!res.ok) throw new Error(`Stream failed: ${res.status}`);
-
-    const reader = res.body!.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        let currentEvent = "";
-        for (const line of lines) {
-          if (line.startsWith("event: ")) {
-            currentEvent = line.slice(7).trim();
-          } else if (line.startsWith("data: ")) {
-            const data = JSON.parse(line.slice(6));
-            yield { type: currentEvent as StreamEvent["type"], ...data };
-          }
-        }
+    async leave() {
+      if (!sessionId) return
+      await iii.trigger({
+        function_id: "spec-forge::leave-session",
+        payload: { session_id: sessionId, worker_id: workerId },
+      })
+      if (sessionTriggerRef) {
+        sessionTriggerRef.unregister()
+        sessionTriggerRef = null
       }
-    } finally {
-      reader.releaseLock();
-    }
+      sessionId = null
+    },
+
+    async shutdown() {
+      if (sessionId) await this.leave()
+      refs.forEach((r) => r.unregister())
+      refs.length = 0
+    },
   }
-
-  async refine(
-    prompt: string,
-    currentSpec: UISpec,
-    catalog: Catalog,
-    model?: string
-  ): Promise<RefineResponse> {
-    const res = await fetch(`${this.baseUrl}/refine`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt,
-        current_spec: currentSpec,
-        catalog,
-        model: model ?? this.model,
-      }),
-    });
-    if (!res.ok) throw new Error(`Refine failed: ${res.status} ${await res.text()}`);
-    return res.json();
-  }
-
-  async validate(spec: UISpec, catalog: Catalog): Promise<ValidationResult> {
-    const res = await fetch(`${this.baseUrl}/validate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ spec, catalog }),
-    });
-    if (!res.ok) throw new Error(`Validate failed: ${res.status}`);
-    return res.json();
-  }
-
-  async stats(): Promise<Stats> {
-    const res = await fetch(`${this.baseUrl}/stats`);
-    if (!res.ok) throw new Error(`Stats failed: ${res.status}`);
-    return res.json();
-  }
-
-  async health(): Promise<boolean> {
-    try {
-      const res = await fetch(`${this.baseUrl}/health`);
-      return res.ok;
-    } catch {
-      return false;
-    }
-  }
-}
-
-export function renderSpec(spec: UISpec, container: HTMLElement): void {
-  container.innerHTML = "";
-  const rendered = renderElement(spec, spec.root);
-  if (rendered) container.appendChild(rendered);
-}
-
-function renderElement(spec: UISpec, id: string): HTMLElement | null {
-  const el = spec.elements[id];
-  if (!el) return null;
-
-  const node = document.createElement("div");
-  node.dataset.iiiId = id;
-  node.dataset.iiiType = el.type;
-
-  switch (el.type) {
-    case "Card":
-      node.className = "iii-card";
-      if (el.props.title) {
-        const h = document.createElement("h3");
-        h.textContent = String(el.props.title);
-        node.appendChild(h);
-      }
-      break;
-
-    case "Button": {
-      const btn = document.createElement("button");
-      btn.className = "iii-button";
-      btn.textContent = String(el.props.label ?? "Button");
-      if (el.props.variant === "primary") btn.classList.add("iii-primary");
-      if (el.props.variant === "secondary") btn.classList.add("iii-secondary");
-      if (el.props.variant === "danger") btn.classList.add("iii-danger");
-      node.appendChild(btn);
-      break;
-    }
-
-    case "Input": {
-      const input = document.createElement("input");
-      input.className = "iii-input";
-      if (el.props.placeholder) input.placeholder = String(el.props.placeholder);
-      if (el.props.type) input.type = String(el.props.type);
-      node.appendChild(input);
-      break;
-    }
-
-    case "Text": {
-      const p = document.createElement("p");
-      p.className = "iii-text";
-      p.textContent = String(el.props.content ?? el.props.text ?? "");
-      node.appendChild(p);
-      break;
-    }
-
-    case "Link": {
-      const a = document.createElement("a");
-      a.className = "iii-link";
-      a.textContent = String(el.props.text ?? el.props.label ?? "Link");
-      a.href = String(el.props.href ?? "#");
-      node.appendChild(a);
-      break;
-    }
-
-    case "Image": {
-      const img = document.createElement("img");
-      img.className = "iii-image";
-      if (el.props.src) img.src = String(el.props.src);
-      if (el.props.alt) img.alt = String(el.props.alt);
-      node.appendChild(img);
-      break;
-    }
-
-    case "Metric": {
-      const metric = document.createElement("div");
-      metric.className = "iii-metric";
-      if (el.props.label) {
-        const label = document.createElement("span");
-        label.className = "iii-metric-label";
-        label.textContent = String(el.props.label);
-        metric.appendChild(label);
-      }
-      const value = document.createElement("span");
-      value.className = "iii-metric-value";
-      value.textContent = String(el.props.value ?? "");
-      metric.appendChild(value);
-      node.appendChild(metric);
-      break;
-    }
-
-    case "List": {
-      const ul = document.createElement("ul");
-      ul.className = "iii-list";
-      node.appendChild(ul);
-      break;
-    }
-
-    case "Table": {
-      const table = document.createElement("table");
-      table.className = "iii-table";
-      if (Array.isArray(el.props.columns)) {
-        const thead = document.createElement("thead");
-        const tr = document.createElement("tr");
-        for (const col of el.props.columns as string[]) {
-          const th = document.createElement("th");
-          th.textContent = col;
-          tr.appendChild(th);
-        }
-        thead.appendChild(tr);
-        table.appendChild(thead);
-      }
-      node.appendChild(table);
-      break;
-    }
-
-    default: {
-      node.className = "iii-unknown";
-      const label = document.createElement("span");
-      label.textContent = `[${el.type}]`;
-      label.className = "iii-type-label";
-      node.appendChild(label);
-      if (el.props) {
-        const pre = document.createElement("pre");
-        pre.textContent = JSON.stringify(el.props, null, 2);
-        node.appendChild(pre);
-      }
-    }
-  }
-
-  for (const childId of el.children) {
-    const child = renderElement(spec, childId);
-    if (child) node.appendChild(child);
-  }
-
-  return node;
 }

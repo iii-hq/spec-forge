@@ -4,14 +4,7 @@ modules:
       adapter:
         class: modules::state::adapters::KvStore
         config:
-          store_method: file_based
-          file_path: ./data/state_store.db
-
-  - class: modules::kv_server::KvServer
-    config:
-      store_method: file_based
-      file_path: ./data/kv_store
-      save_interval_ms: 5000
+          store_method: in_memory
 
   - class: modules::api::RestApiModule
     config:
@@ -25,6 +18,7 @@ modules:
           - http://localhost:3111
           - http://localhost:3000
           - http://localhost:5173
+          - http://localhost:8888
         allowed_methods:
           - GET
           - POST
@@ -34,16 +28,7 @@ modules:
 
   - class: modules::observability::OtelModule
     config:
-      enabled: true
-      service_name: spec-forge
-      exporter: memory
-      sampling_ratio: 1.0
-      memory_max_spans: 5000
-      metrics_enabled: true
-      metrics_exporter: memory
-      logs_enabled: true
-      logs_exporter: memory
-      logs_console_output: true
+      enabled: false
 
   - class: modules::pubsub::PubSubModule
     config:
@@ -54,3 +39,29 @@ modules:
     config:
       adapter:
         class: modules::cron::KvCronAdapter
+
+  - class: modules::worker::WorkerModule
+    config:
+      host: 0.0.0.0
+      port: 49134
+
+  - class: modules::worker::WorkerModule
+    config:
+      host: 127.0.0.1
+      port: 49135
+      rbac:
+        expose_functions:
+          - match("api::*")
+          - match("spec-forge::join-session")
+          - match("spec-forge::leave-session")
+          - match("spec-forge::push-patch")
+          - match("ui::render-patch::*")
+
+  - class: modules::stream::StreamModule
+    config:
+      port: 3113
+      adapter:
+        class: modules::stream::adapters::KvStore
+        config:
+          store_method: file_based
+          file_path: ./data/stream_store

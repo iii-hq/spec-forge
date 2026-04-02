@@ -972,15 +972,30 @@
     border-color: var(--accent) !important;
   }
 
+  @media (max-width: 1200px) {
+    .playground-section { padding: 32px 16px; }
+    .pg-panels { height: auto; min-height: 400px; }
+  }
+
+  @media (max-width: 900px) {
+    .pg-panels { grid-template-columns: 1fr; height: auto; }
+    .pg-panel:first-child { border-right: none; border-bottom: 1px solid var(--medium-dark); }
+    .pg-panel { min-height: 300px; }
+  }
+
   @media (max-width: 768px) {
     .steps { grid-template-columns: 1fr; gap: 32px; }
     .code-grid { grid-template-columns: 1fr; }
-    .pg-panels { grid-template-columns: 1fr; }
+    .pg-panels { grid-template-columns: 1fr; height: auto; }
     .pg-panel:first-child { border-right: none; border-bottom: 1px solid var(--medium-dark); }
+    .pg-panel { min-height: 250px; }
     .hero h1 { font-size: 36px; }
     nav { padding: 0 16px; }
     .catalog-drawer { width: 100%; }
     .checklist { padding: 0 16px; }
+    .pg-toolbar { flex-wrap: wrap; }
+    .pg-toolbar input { min-width: 200px; }
+    #sessionBar { flex-wrap: wrap; }
   }
 </style>
 </head>
@@ -1176,13 +1191,27 @@
   </div>
 
   <div class="playground">
+    <!-- SESSION BAR -->
+    <div id="sessionBar" style="display:flex;align-items:center;gap:8px;padding:6px 16px;background:var(--dark);border-bottom:1px solid var(--medium-dark);font-size:11px;flex-wrap:wrap;min-height:36px">
+      <span style="color:var(--accent);font-weight:700;letter-spacing:1px;text-transform:uppercase;font-size:10px">Collab</span>
+      <input type="text" id="sessionId" placeholder="session-id" value="" style="background:var(--dark2);border:1px solid var(--medium-dark);color:var(--light);padding:3px 8px;border-radius:var(--radius);font-family:var(--mono);font-size:11px;width:120px" />
+      <button class="btn btn-sm" id="joinBtn" onclick="toggleSession()" style="font-size:10px;padding:2px 10px;background:var(--accent);color:var(--black);border:none;border-radius:var(--radius);cursor:pointer;font-weight:600">Join</button>
+      <span id="sessionStatus" style="color:var(--light3);font-size:10px">offline</span>
+      <span id="peerCount" style="color:var(--accent);display:none;font-size:10px"></span>
+      <span style="flex:1"></span>
+      <span style="color:var(--light3);font-size:9px;opacity:0.6">Open 2 tabs to collaborate</span>
+    </div>
+
     <div class="pg-toolbar">
       <input type="text" id="prompt" placeholder="Describe a UI or 3D scene..." value="A dashboard with three metric cards showing revenue, users, and orders, plus a data table below" />
       <button class="btn btn-sm btn-outline" onclick="toggleDrawer()">Catalog</button>
-      <button class="btn btn-sm btn-outline" id="refineBtn" onclick="doRefine()" disabled>Refine</button>
       <button class="send-btn" id="streamBtn" onclick="doStream()" title="Stream (Enter)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
       </button>
+    </div>
+    <div id="refineBar" class="pg-toolbar" style="display:none;border-top:none;padding-top:0">
+      <input type="text" id="refinePrompt2" placeholder="Refine: e.g. Add a search bar, make heading red..." style="flex:1" />
+      <button class="btn btn-sm" id="refineBtn" onclick="doRefine()" style="background:var(--primary);color:var(--light);border:none">Refine</button>
     </div>
 
     <div style="display:flex;gap:8px;padding:8px 16px;border-bottom:1px solid var(--medium-dark);background:var(--dark2);flex-wrap:wrap;align-items:center">
@@ -1840,7 +1869,201 @@ function renderStreamElement(spec, id) {
   return node;
 }
 
-const WS_ENGINE = "ws://" + (window.location.hostname || "localhost") + ":49134";
+// iii-browser-sdk — single WebSocket, all primitives
+const III_ENGINE = "ws://" + (window.location.hostname || "localhost") + ":49135";
+const BROWSER_ID = sessionStorage.getItem("spec-forge-browser-id") || ("browser-" + Math.random().toString(36).slice(2, 8));
+sessionStorage.setItem("spec-forge-browser-id", BROWSER_ID);
+let iii = null;
+let iiiConnected = false;
+
+async function initIII() {
+  if (iii) return iii;
+  try {
+    const mod = await import("https://cdn.jsdelivr.net/npm/iii-browser-sdk@0.10.0-beta.4/dist/index.mjs");
+    iii = mod.registerWorker(III_ENGINE);
+
+    iii.registerFunction({ id: "ui::render-patch::" + BROWSER_ID }, async (data) => {
+      const msg = (data.patch && data.session && !data.type) ? data.patch : data;
+
+      if (msg.type === "patch" && msg.patch) {
+        if (!_peerStreaming) {
+          _peerStreaming = true;
+          streamPartialSpec = { root: "", elements: {} };
+          streamPatchCount = 0;
+          setBadge("streaming", "PEER STREAMING");
+          document.getElementById("jsonPanel").innerHTML = '<div class="json-placeholder">Receiving patches from peer...</div>';
+        }
+        streamPatchCount++;
+        applyPatch(streamPartialSpec, msg.patch);
+        if (streamPartialSpec.root && Object.keys(streamPartialSpec.elements).length > 0) {
+          document.getElementById("jsonPanel").innerHTML = syntaxHighlight(JSON.stringify(streamPartialSpec, null, 2)) + '<span class="cursor"></span>';
+          document.getElementById("jsonPanel").scrollTop = document.getElementById("jsonPanel").scrollHeight;
+          const previewPanel = document.getElementById("previewPanel");
+          previewPanel.style.padding = "24px";
+          const frag = document.createDocumentFragment();
+          const el = renderStreamElement(streamPartialSpec, streamPartialSpec.root);
+          if (el) frag.appendChild(el);
+          previewPanel.replaceChildren(frag);
+        }
+        setBadge("streaming", streamPatchCount + " PATCHES (peer)");
+      } else if (msg.type === "done") {
+        _peerStreaming = false;
+        currentSpec = msg.spec || streamPartialSpec;
+        document.getElementById("jsonPanel").innerHTML = syntaxHighlight(JSON.stringify(currentSpec, null, 2));
+        renderSpec(currentSpec);
+        const n = Object.keys(currentSpec.elements || {}).length;
+        setBadge("done", streamPatchCount + " PATCHES \u00b7 " + n + " ELEMENTS");
+        document.getElementById("refineBtn").disabled = false; document.getElementById("refineBar").style.display = "flex";
+        addStreamLog("peer-done", { patches: streamPatchCount, elements: n });
+      } else if (msg.type === "error") {
+        _peerStreaming = false;
+        setBadge("done", "PEER ERROR");
+        addStreamLog("peer-error", { error: msg.error });
+      }
+
+      return { applied: true };
+    });
+
+    // Register function: receive state updates
+    iii.registerFunction({ id: "ui::state-update" }, async (data) => {
+      addStreamLog("state", { key: data.key, value: JSON.stringify(data.value).substring(0, 50) });
+      return { received: true };
+    });
+
+    // Register function: receive notifications
+    iii.registerFunction({ id: "ui::notification" }, async (data) => {
+      addStreamLog("push", { type: data.type });
+      return { displayed: true };
+    });
+
+    iiiConnected = true;
+    addStreamLog("iii", { status: "connected via iii-browser-sdk" });
+    return iii;
+  } catch (e) {
+    console.warn("iii-browser-sdk not available, falling back to HTTP:", e.message);
+    iiiConnected = false;
+    return null;
+  }
+}
+
+// Shared patch handler — works for both iii-browser-sdk and HTTP/WS paths
+let streamPartialSpec = { root: "", elements: {} };
+let streamPatchCount = 0;
+let streamGenerationMs = 0;
+let _peerStreaming = false;
+
+function handlePatchEvent(rawMsg) {
+  // Fan-out wraps messages as { patch: <actual_msg>, session: "..." }
+  // Unwrap if needed
+  const msg = (rawMsg.patch && rawMsg.session && !rawMsg.type) ? rawMsg.patch : rawMsg;
+  const jsonPanel = document.getElementById("jsonPanel");
+  const previewPanel = document.getElementById("previewPanel");
+
+  if (msg.type === "patch" && msg.patch) {
+    const patch = msg.patch;
+    streamPatchCount++;
+    applyPatch(streamPartialSpec, patch);
+    addStreamLog(patch.op.toUpperCase(), { path: patch.path });
+
+    if (streamPartialSpec.root && Object.keys(streamPartialSpec.elements).length > 0) {
+      jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(streamPartialSpec, null, 2)) + '<span class="cursor"></span>';
+      jsonPanel.scrollTop = jsonPanel.scrollHeight;
+      previewPanel.style.padding = "24px";
+      const frag = document.createDocumentFragment();
+      const el = renderStreamElement(streamPartialSpec, streamPartialSpec.root);
+      if (el) frag.appendChild(el);
+      previewPanel.replaceChildren(frag);
+    }
+    setBadge("streaming", streamPatchCount + " PATCHES");
+  } else if (msg.type === "done") {
+    streamGenerationMs = msg.generation_ms || 0;
+    currentSpec = msg.spec;
+    addStreamLog("done", { patches: streamPatchCount, ms: streamGenerationMs, valid: msg.valid });
+    if (msg.errors && msg.errors.length) addStreamLog("warn", { errors: msg.errors });
+
+    document.getElementById("refineBtn").disabled = false; document.getElementById("refineBar").style.display = "flex";
+    jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(currentSpec, null, 2));
+    renderSpec(currentSpec);
+    const n = Object.keys(currentSpec.elements).length;
+    setBadge("done", streamPatchCount + " PATCHES \u00b7 " + n + " ELEMENTS \u00b7 " + streamGenerationMs + "MS");
+    setLoading(false);
+  } else if (msg.type === "error") {
+    addStreamLog("error", { error: msg.error });
+    setBadge("done", "ERROR");
+    setLoading(false);
+  }
+}
+
+// === SESSION MANAGEMENT ===
+let currentSessionId = null;
+
+async function toggleSession() {
+  if (currentSessionId) {
+    await leaveSession();
+  } else {
+    await joinSession();
+  }
+}
+
+async function joinSession() {
+  await initIII();
+  if (!iii || !iiiConnected) { alert("iii not connected"); return; }
+
+  const sid = document.getElementById("sessionId").value.trim();
+  if (!sid) return;
+
+  try {
+    const result = await iii.trigger({
+      function_id: "spec-forge::join-session",
+      payload: { body: { session_id: sid, worker_id: BROWSER_ID }, headers: {}, path_params: {}, query_params: {} },
+    });
+
+    currentSessionId = sid;
+    document.getElementById("joinBtn").textContent = "Leave";
+    document.getElementById("joinBtn").style.background = "var(--red)";
+    document.getElementById("joinBtn").style.color = "var(--light)";
+    document.getElementById("sessionStatus").textContent = "session: " + sid;
+    document.getElementById("sessionStatus").style.color = "var(--green)";
+
+    const info = result.body || result;
+    if (info.peers) {
+      document.getElementById("peerCount").textContent = info.peers.length + " peer(s)";
+      document.getElementById("peerCount").style.display = "inline";
+    }
+
+    if (info.spec) {
+      currentSpec = typeof info.spec === "string" ? JSON.parse(info.spec) : info.spec;
+      document.getElementById("jsonPanel").innerHTML = syntaxHighlight(JSON.stringify(currentSpec, null, 2));
+      renderSpec(currentSpec);
+      document.getElementById("refineBtn").disabled = false; document.getElementById("refineBar").style.display = "flex";
+      addStreamLog("session", { action: "joined", id: sid, spec: "loaded from session" });
+    } else {
+      addStreamLog("session", { action: "joined", id: sid, spec: "empty" });
+    }
+  } catch (e) {
+    addStreamLog("error", { error: "Join failed: " + e.message });
+  }
+}
+
+async function leaveSession() {
+  if (!currentSessionId || !iii) return;
+
+  try {
+    await iii.trigger({
+      function_id: "spec-forge::leave-session",
+      payload: { body: { session_id: currentSessionId, worker_id: BROWSER_ID }, headers: {}, path_params: {}, query_params: {} },
+    });
+  } catch (e) { /* ignore */ }
+
+  addStreamLog("session", { action: "left", id: currentSessionId });
+  currentSessionId = null;
+  document.getElementById("joinBtn").textContent = "Join";
+  document.getElementById("joinBtn").style.background = "var(--accent)";
+  document.getElementById("joinBtn").style.color = "var(--black)";
+  document.getElementById("sessionStatus").textContent = "not in session";
+  document.getElementById("sessionStatus").style.color = "var(--light3)";
+  document.getElementById("peerCount").style.display = "none";
+}
 
 function applyPatch(spec, patch) {
   const op = patch.op;
@@ -1871,14 +2094,95 @@ async function doStream() {
   const previewPanel = document.getElementById("previewPanel");
   previewPanel.style.padding = "24px";
   previewPanel.style.overflow = "";
-  jsonPanel.innerHTML = '<div class="json-placeholder">Opening iii Channel...</div>';
-  previewPanel.innerHTML = '<div class="preview-empty"><span>Waiting for patches...</span></div>';
   streamLogEntries = [];
   document.getElementById("streamLog").innerHTML = "";
+  streamPartialSpec = { root: "", elements: {} };
+  streamPatchCount = 0;
+  streamGenerationMs = 0;
+
+  // Try iii-browser-sdk first (single WebSocket, push-based)
+  await initIII();
+  if (iii && iiiConnected) {
+    jsonPanel.innerHTML = '<div class="json-placeholder">iii.trigger("spec-forge::stream")...</div>';
+    previewPanel.innerHTML = '<div class="preview-empty"><span>Waiting for patches via iii...</span></div>';
+    addStreamLog("request", { prompt: prompt.substring(0, 80), transport: "iii-browser-sdk" });
+
+    try {
+      const result = await iii.trigger({
+        function_id: "api::post::spec-forge::stream",
+        payload: { body: { prompt, catalog, session_id: currentSessionId }, headers: {}, path_params: {}, query_params: {} },
+      });
+
+      const data = result.body || result;
+
+      if (data.cached) {
+        currentSpec = data.spec;
+        addStreamLog("cached", { elements: Object.keys(currentSpec.elements).length });
+        jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(currentSpec, null, 2));
+        renderSpec(currentSpec);
+        document.getElementById("refineBtn").disabled = false; document.getElementById("refineBar").style.display = "flex";
+        const n = Object.keys(currentSpec.elements).length;
+        setBadge("cached", "CACHED \u00b7 " + n + " ELEMENTS \u00b7 0MS");
+        setLoading(false);
+        return;
+      }
+
+      // Non-cached: patches arrive via two paths
+      if (currentSessionId) {
+        // SESSION MODE: patches arrive via fan-out AND channel
+        // Read channel for our own streaming, fan-out delivers to other peers
+        const ch = data.channel;
+        if (ch) {
+          const wsUrl = III_ENGINE + "/ws/channels/" + ch.channel_id + "?key=" + encodeURIComponent(ch.access_key) + "&dir=read";
+          addStreamLog("session-stream", { session: currentSessionId, channel: ch.channel_id.slice(0, 8) });
+          setBadge("streaming", "STREAMING (collab)");
+          jsonPanel.innerHTML = '<div class="json-placeholder">Generating — streaming to all peers...</div>';
+
+          await new Promise((resolve, reject) => {
+            const ws = new WebSocket(wsUrl);
+            ws.onmessage = (event) => {
+              try { handlePatchEvent(JSON.parse(event.data)); }
+              catch (e) { addStreamLog("parse-error", { raw: event.data.substring(0, 100) }); }
+            };
+            ws.onclose = () => resolve();
+            ws.onerror = () => reject(new Error("Channel WebSocket error"));
+          });
+        }
+      } else {
+        // SOLO MODE: read patches from the returned channel via WebSocket
+        const ch = data.channel;
+        if (ch) {
+          const wsUrl = III_ENGINE + "/ws/channels/" + ch.channel_id + "?key=" + encodeURIComponent(ch.access_key) + "&dir=read";
+          addStreamLog("channel", { id: ch.channel_id, transport: "channel-ws" });
+          setBadge("streaming", "STREAMING");
+          jsonPanel.innerHTML = '<div class="json-placeholder">Connected via iii — waiting for Claude...</div>';
+
+          await new Promise((resolve, reject) => {
+            const ws = new WebSocket(wsUrl);
+            ws.onmessage = (event) => {
+              try { handlePatchEvent(JSON.parse(event.data)); }
+              catch (e) { addStreamLog("parse-error", { raw: event.data.substring(0, 100) }); }
+            };
+            ws.onclose = () => resolve();
+            ws.onerror = () => reject(new Error("Channel WebSocket error"));
+          });
+        }
+      }
+    } catch (e) {
+      addStreamLog("error", { error: e.message });
+      setBadge("done", "ERROR");
+      jsonPanel.innerHTML = '<span style="color:var(--red)">' + e.message + '</span>';
+      setLoading(false);
+    }
+    return;
+  }
+
+  // Fallback: HTTP + WebSocket channel (v1 path)
+  jsonPanel.innerHTML = '<div class="json-placeholder">Opening iii Channel (HTTP fallback)...</div>';
+  previewPanel.innerHTML = '<div class="preview-empty"><span>Waiting for patches...</span></div>';
+  addStreamLog("request", { prompt: prompt.substring(0, 80), transport: "http+ws" });
 
   try {
-    addStreamLog("request", { prompt: prompt.substring(0, 80) });
-
     const res = await fetch(ENGINE + "/spec-forge/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1898,67 +2202,30 @@ async function doStream() {
       currentSpec = data.spec;
       jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(data.spec, null, 2));
       renderSpec(currentSpec);
-      document.getElementById("refineBtn").disabled = false;
+      document.getElementById("refineBtn").disabled = false; document.getElementById("refineBar").style.display = "flex";
       const n = Object.keys(data.spec.elements).length;
-      setBadge("cached", "CACHED · " + n + " ELEMENTS · 0MS");
+      setBadge("cached", "CACHED \u00b7 " + n + " ELEMENTS \u00b7 0MS");
       setLoading(false);
       return;
     }
 
     const ch = data.channel;
-    const wsUrl = WS_ENGINE + "/ws/channels/" + ch.channel_id + "?key=" + encodeURIComponent(ch.access_key) + "&dir=read";
-    addStreamLog("channel", { id: ch.channel_id });
-    setBadge("streaming", "STREAMING");
-    jsonPanel.innerHTML = '<div class="json-placeholder">Connected — waiting for Claude...</div>';
+    if (ch) {
+      const WS_ENGINE = III_ENGINE;
+      const wsUrl = WS_ENGINE + "/ws/channels/" + ch.channel_id + "?key=" + encodeURIComponent(ch.access_key) + "&dir=read";
+      addStreamLog("channel", { id: ch.channel_id });
+      setBadge("streaming", "STREAMING");
+      jsonPanel.innerHTML = '<div class="json-placeholder">Connected — waiting for Claude...</div>';
 
-    const partialSpec = { root: "", elements: {} };
-    let patchCount = 0;
-    let generationMs = 0;
-
-    await new Promise((resolve, reject) => {
-      const ws = new WebSocket(wsUrl);
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-
-          if (msg.type === "patch") {
-            const patch = msg.patch;
-            patchCount++;
-            applyPatch(partialSpec, patch);
-            addStreamLog(patch.op.toUpperCase(), { path: patch.path });
-
-            if (partialSpec.root && Object.keys(partialSpec.elements).length > 0) {
-              jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(partialSpec, null, 2)) + '<span class="cursor"></span>';
-              jsonPanel.scrollTop = jsonPanel.scrollHeight;
-              previewPanel.style.padding = "24px";
-              previewPanel.innerHTML = "";
-              const el = renderStreamElement(partialSpec, partialSpec.root);
-              if (el) previewPanel.appendChild(el);
-            }
-            setBadge("streaming", patchCount + " PATCHES");
-          } else if (msg.type === "done") {
-            generationMs = msg.generation_ms || 0;
-            currentSpec = msg.spec;
-            addStreamLog("done", { patches: patchCount, ms: generationMs, valid: msg.valid });
-            if (msg.errors && msg.errors.length) addStreamLog("warn", { errors: msg.errors });
-          } else if (msg.type === "error") {
-            addStreamLog("error", { error: msg.error });
-            reject(new Error(msg.error));
-          }
-        } catch (e) {
-          addStreamLog("parse-error", { raw: event.data.substring(0, 100) });
-        }
-      };
-      ws.onclose = () => resolve();
-      ws.onerror = (e) => reject(new Error("WebSocket error"));
-    });
-
-    if (currentSpec) {
-      document.getElementById("refineBtn").disabled = false;
-      jsonPanel.innerHTML = syntaxHighlight(JSON.stringify(currentSpec, null, 2));
-      renderSpec(currentSpec);
-      const n = Object.keys(currentSpec.elements).length;
-      setBadge("done", patchCount + " PATCHES · " + n + " ELEMENTS · " + generationMs + "MS");
+      await new Promise((resolve, reject) => {
+        const ws = new WebSocket(wsUrl);
+        ws.onmessage = (event) => {
+          try { handlePatchEvent(JSON.parse(event.data)); }
+          catch (e) { addStreamLog("parse-error", { raw: event.data.substring(0, 100) }); }
+        };
+        ws.onclose = () => resolve();
+        ws.onerror = () => reject(new Error("WebSocket error"));
+      });
     }
   } catch (e) {
     addStreamLog("error", { error: e.message });
@@ -1980,17 +2247,38 @@ async function doGenerate() {
   document.getElementById("jsonPanel").innerHTML = '<div class="json-placeholder">Generating...</div>';
 
   try {
-    const res = await fetch(ENGINE + "/spec-forge/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, catalog }),
-    });
-    const data = await res.json();
-    if (!res.ok) { setBadge("done", "ERROR"); document.getElementById("jsonPanel").innerHTML = '<span style="color:var(--red)">' + data.error + '</span>'; return; }
+    let data;
+
+    // Try iii-browser-sdk first
+    await initIII();
+    if (iii && iiiConnected) {
+      addStreamLog("request", { transport: "iii-browser-sdk" });
+      const result = await iii.trigger({
+        function_id: "api::post::spec-forge::generate",
+        payload: { body: { prompt, catalog }, headers: {}, path_params: {}, query_params: {} },
+      });
+      data = result.body || result;
+      if (data.error) {
+        setBadge("done", "ERROR");
+        document.getElementById("jsonPanel").innerHTML = '<span style="color:var(--red)">' + data.error + '</span>';
+        setLoading(false);
+        return;
+      }
+    } else {
+      // Fallback: HTTP
+      const res = await fetch(ENGINE + "/spec-forge/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, catalog }),
+      });
+      data = await res.json();
+      if (!res.ok) { setBadge("done", "ERROR"); document.getElementById("jsonPanel").innerHTML = '<span style="color:var(--red)">' + data.error + '</span>'; return; }
+    }
+
     currentSpec = data.spec;
     document.getElementById("jsonPanel").innerHTML = syntaxHighlight(JSON.stringify(data.spec, null, 2));
     renderSpec(currentSpec);
-    document.getElementById("refineBtn").disabled = false;
+    document.getElementById("refineBtn").disabled = false; document.getElementById("refineBar").style.display = "flex";
     const n = Object.keys(data.spec.elements).length;
     setBadge(data.cached ? "cached" : "done", n + " ELEMENTS \u00b7 " + data.generation_ms + "MS" + (data.cached ? " \u00b7 CACHED" : ""));
   } catch (e) {
@@ -2003,35 +2291,79 @@ async function doRefine() {
   if (!currentSpec) return;
   const catalog = getCatalog();
   if (!catalog) { toggleDrawer(); return; }
-  const prompt = document.getElementById("refinePrompt").value.trim() || document.getElementById("prompt").value.trim();
-  if (!prompt) return;
+  const prompt = document.getElementById("refinePrompt2").value.trim() || document.getElementById("refinePrompt").value.trim();
+  if (!prompt) { document.getElementById("refinePrompt2").focus(); document.getElementById("refinePrompt2").placeholder = "Type a change here first..."; return; }
 
   setLoading(true);
   setBadge("streaming", "REFINING");
 
   try {
+    let data;
+
     const res = await fetch(ENGINE + "/spec-forge/refine", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt, current_spec: currentSpec, catalog }),
     });
-    const data = await res.json();
-    if (!res.ok) { setBadge("done", "ERROR"); document.getElementById("jsonPanel").innerHTML = '<span style="color:var(--red)">' + data.error + '</span>'; return; }
+    data = await res.json();
+    console.log("[refine] response:", res.status, data);
+    console.log("[refine] sent:", { prompt, current_spec: currentSpec, catalog });
+    if (!res.ok) {
+      setBadge("done", "ERROR");
+      document.getElementById("jsonPanel").innerHTML = '<span style="color:var(--red)">' + (data.error || "Refine failed") + (data.raw ? '<br><br>Raw: ' + data.raw.substring(0, 500) : '') + '</span>';
+      setLoading(false);
+      return;
+    }
+
+    const oldKeys = new Set(Object.keys(currentSpec?.elements || {}));
     currentSpec = data.spec;
+    const newKeys = new Set(Object.keys(currentSpec.elements || {}));
+    const added = [...newKeys].filter(k => !oldKeys.has(k));
+    const removed = [...oldKeys].filter(k => !newKeys.has(k));
+
     document.getElementById("jsonPanel").innerHTML = syntaxHighlight(JSON.stringify(data.spec, null, 2));
     renderSpec(currentSpec);
-    setBadge("done", data.patch_count + " PATCHES \u00b7 " + data.generation_ms + "MS");
+
+    if (added.length || removed.length) {
+      for (const key of added) {
+        const el = document.querySelector('[data-id="' + key + '"]');
+        if (el) { el.style.outline = "2px solid var(--green)"; el.style.outlineOffset = "2px"; setTimeout(() => { el.style.outline = ""; el.style.outlineOffset = ""; }, 2000); }
+      }
+    }
+
+    const elCount = Object.keys(currentSpec.elements || {}).length;
+    const changes = [];
+    if (added.length) changes.push("+" + added.length + " added");
+    if (removed.length) changes.push("-" + removed.length + " removed");
+    const changeStr = changes.length ? " (" + changes.join(", ") + ")" : "";
+    setBadge("done", data.patch_count + " PATCHES \u00b7 " + elCount + " ELEMENTS \u00b7 " + data.generation_ms + "MS" + changeStr);
+    addStreamLog("refined", { patches: data.patch_count, elements: elCount, added: added, removed: removed, ms: data.generation_ms });
     document.getElementById("refinePrompt").value = "";
-  } catch (e) { setBadge("done", "ERROR"); }
+    document.getElementById("refinePrompt2").value = "";
+  } catch (e) {
+    console.error("[refine] error:", e);
+    setBadge("done", "ERROR");
+    document.getElementById("jsonPanel").innerHTML = '<span style="color:var(--red)">Refine failed: ' + (e.message || e) + '</span>';
+  }
   finally { setLoading(false); }
 }
 
 async function checkHealth() {
   try {
-    const res = await fetch(ENGINE + "/spec-forge/health");
+    // Try iii-browser-sdk first
+    await initIII();
     const dot = document.getElementById("statusDot");
     const txt = document.getElementById("statusText");
-    if (res.ok) { dot.classList.add("connected"); txt.textContent = "connected"; }
+
+    if (iii && iiiConnected) {
+      dot.classList.add("connected");
+      txt.textContent = "connected (iii-browser-sdk)";
+      return;
+    }
+
+    // Fallback: HTTP health check
+    const res = await fetch(ENGINE + "/spec-forge/health");
+    if (res.ok) { dot.classList.add("connected"); txt.textContent = "connected (HTTP)"; }
     else { dot.classList.remove("connected"); txt.textContent = "disconnected"; }
   } catch {
     document.getElementById("statusDot").classList.remove("connected");
@@ -2471,6 +2803,32 @@ window.render3DScene = function(spec, container) {
   _resizeObs.observe(container);
 };
 
+
+window.addEventListener("beforeunload", () => {
+  if (currentSessionId) {
+    navigator.sendBeacon(
+      ENGINE + "/spec-forge/leave",
+      new Blob([JSON.stringify({ session_id: currentSessionId, worker_id: BROWSER_ID })], { type: "application/json" })
+    );
+  }
+});
+
+const navAnchors = new Set(["playground", "how", "comparison", "hero", ""]);
+const rawHash = window.location.hash.replace('#', '');
+const urlSession = new URLSearchParams(window.location.search).get("session");
+const sessionName = urlSession
+  ? urlSession
+  : (!rawHash || navAnchors.has(rawHash))
+    ? "sf-" + BROWSER_ID.split("-").slice(0, 2).join("-")
+    : rawHash;
+document.getElementById("sessionId").value = sessionName;
+
+// Auto-connect to engine, but only auto-join if an explicit ?session= param was provided
+initIII().then(() => {
+  if (iii && iiiConnected && urlSession) {
+    joinSession();
+  }
+});
 
 </script>
 </body>

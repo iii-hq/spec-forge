@@ -3,10 +3,11 @@ mod catalogs;
 mod limiter;
 mod prompt;
 mod semantic;
+mod session;
 mod types;
 mod validate;
 
-use iii_sdk::{ApiRequest, ApiResponse, III, IIIError, Streams, get_context};
+use iii_sdk::{ApiRequest, ApiResponse, III, IIIError, InitOptions, RegisterTriggerInput, Streams, protocol::RegisterServiceMessage, protocol::RegisterFunctionMessage, register_worker};
 use reqwest::Client;
 use serde_json::{Value, json};
 use std::{collections::HashMap, sync::Arc, time::Duration};
@@ -81,7 +82,7 @@ async fn main() {
     let engine_url =
         std::env::var("III_ENGINE_URL").unwrap_or_else(|_| "ws://127.0.0.1:49134".into());
 
-    let iii = III::new(&engine_url);
+    let iii = register_worker(&engine_url, InitOptions::default());
     let streams = Streams::new(iii.clone());
 
     let shared = Arc::new(SharedState {
@@ -96,10 +97,6 @@ async fn main() {
 
     register_functions(&iii, shared.clone());
     register_http_triggers(&iii);
-
-    iii.connect()
-        .await
-        .expect("Failed to connect to iii engine — is it running?");
 
     println!("spec-forge worker connected to {engine_url}");
     println!();
@@ -122,17 +119,15 @@ async fn main() {
 
 fn register_functions(iii: &III, shared: Arc<SharedState>) {
     let s = shared.clone();
-    iii.register_function_with_description(
-        "api::post::spec-forge::generate",
-        "Generate UI spec from prompt + catalog via Claude, with SHA-256 exact + TF-IDF semantic caching",
+    iii.register_function_with(
+        RegisterFunctionMessage::with_id("api::post::spec-forge::generate".to_string())
+            .with_description("Generate UI spec from prompt + catalog via Claude, with SHA-256 exact + TF-IDF semantic caching".to_string()),
         move |input| {
             let s = s.clone();
             async move {
                 let req: ApiRequest<GenerateRequest> = serde_json::from_value(input)
                     .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
-                let ctx = get_context();
-                ctx.logger
-                    .info("generate", Some(json!({"prompt": req.body.prompt})));
+                tracing::info!(action = "generate", prompt_len = req.body.prompt.len());
                 match generate_core(&s, req.body).await {
                     Ok(body) => Ok(serde_json::to_value(ApiResponse {
                         status_code: 200,
@@ -150,17 +145,15 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
     );
 
     let s = shared.clone();
-    iii.register_function_with_description(
-        "api::post::spec-forge::refine",
-        "Patch existing UI spec with incremental changes (Add/Replace/Remove)",
+    iii.register_function_with(
+        RegisterFunctionMessage::with_id("api::post::spec-forge::refine".to_string())
+            .with_description("Patch existing UI spec with incremental changes (Add/Replace/Remove)".to_string()),
         move |input| {
             let s = s.clone();
             async move {
                 let req: ApiRequest<RefineInput> = serde_json::from_value(input)
                     .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
-                let ctx = get_context();
-                ctx.logger
-                    .info("refine", Some(json!({"prompt": req.body.prompt})));
+                tracing::info!(action = "refine", prompt_len = req.body.prompt.len());
                 match refine_core(&s, req.body).await {
                     Ok(body) => Ok(serde_json::to_value(ApiResponse {
                         status_code: 200,
@@ -177,9 +170,9 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
         },
     );
 
-    iii.register_function_with_description(
-        "api::post::spec-forge::validate",
-        "Validate a UI spec against a component catalog",
+    iii.register_function_with(
+        RegisterFunctionMessage::with_id("api::post::spec-forge::validate".to_string())
+            .with_description("Validate a UI spec against a component catalog".to_string()),
         |input| async move {
             let req: ApiRequest = serde_json::from_value(input)
                 .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
@@ -196,9 +189,9 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
         },
     );
 
-    iii.register_function_with_description(
-        "api::post::spec-forge::prompt",
-        "Preview the LLM prompt for a given request",
+    iii.register_function_with(
+        RegisterFunctionMessage::with_id("api::post::spec-forge::prompt".to_string())
+            .with_description("Preview the LLM prompt for a given request".to_string()),
         |input| async move {
             let req: ApiRequest<GenerateRequest> = serde_json::from_value(input)
                 .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
@@ -218,9 +211,9 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
     );
 
     let s = shared.clone();
-    iii.register_function_with_description(
-        "api::get::spec-forge::stats",
-        "Rate limiter + cache statistics",
+    iii.register_function_with(
+        RegisterFunctionMessage::with_id("api::get::spec-forge::stats".to_string())
+            .with_description("Rate limiter + cache statistics".to_string()),
         move |_input| {
             let s = s.clone();
             async move {
@@ -234,9 +227,9 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
         },
     );
 
-    iii.register_function_with_description(
-        "api::get::spec-forge::health",
-        "Liveness check",
+    iii.register_function_with(
+        RegisterFunctionMessage::with_id("api::get::spec-forge::health".to_string())
+            .with_description("Liveness check".to_string()),
         |_input| async move {
             let body = json!({"status": "ok", "service": "spec-forge"});
             Ok(serde_json::to_value(ApiResponse {
@@ -248,16 +241,15 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
     );
 
     let s = shared.clone();
-    iii.register_function_with_description(
-        "api::post::spec-forge::stream",
-        "Stream UI spec patches via iii Channel — returns WebSocket reader ref for real-time patches",
+    iii.register_function_with(
+        RegisterFunctionMessage::with_id("api::post::spec-forge::stream".to_string())
+            .with_description("Stream UI spec patches via iii Channel — returns WebSocket reader ref for real-time patches".to_string()),
         move |input| {
             let s = s.clone();
             async move {
                 let req: ApiRequest<GenerateRequest> = serde_json::from_value(input)
                     .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
-                let ctx = get_context();
-                ctx.logger.info("stream", Some(json!({"prompt": req.body.prompt})));
+                tracing::info!(action = "stream", prompt_len = req.body.prompt.len());
                 match stream_core(&s, req.body).await {
                     Ok(body) => Ok(serde_json::to_value(ApiResponse {
                         status_code: 200,
@@ -274,9 +266,9 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
         },
     );
 
-    iii.register_function_with_description(
-        "api::get::spec-forge::catalogs",
-        "List available built-in catalog presets (minimal, dashboard, form, ecommerce, 3d, 3d-product)",
+    iii.register_function_with(
+        RegisterFunctionMessage::with_id("api::get::spec-forge::catalogs".to_string())
+            .with_description("List available built-in catalog presets (minimal, dashboard, form, ecommerce, 3d, 3d-product)".to_string()),
         |input| async move {
             let req: ApiRequest = serde_json::from_value(input)
                 .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
@@ -312,13 +304,92 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
         },
     );
 
-    iii.register_service(
-        "spec-forge",
-        Some(
-            "Rust generation server for json-render — caching, streaming, rate limiting, spec diffing, 3D scene support"
-                .into(),
-        ),
+    // Session management functions
+    let s = shared.clone();
+    iii.register_function_with(
+        RegisterFunctionMessage::with_id("spec-forge::join-session".to_string())
+            .with_description("Join a collaborative session — adds browser worker to peer list, pushes current spec".to_string()),
+        move |input| {
+            let s = s.clone();
+            async move {
+                let req: ApiRequest<JoinSessionRequest> = serde_json::from_value(input)
+                    .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
+                req.body.validate().map_err(|e| IIIError::Handler(e))?;
+                let worker_id = req.body.worker_id.unwrap_or_else(|| "anonymous".to_string());
+                let info = session::join_session(&s.iii, &req.body.session_id, &worker_id)
+                    .await
+                    .map_err(|e| IIIError::Handler(e.to_string()))?;
+
+                if let Some(ref spec) = info.spec {
+                    let fn_id = format!("ui::render-patch::{}", worker_id);
+                    let _ = s.iii.trigger(iii_sdk::TriggerRequest {
+                        function_id: fn_id,
+                        payload: json!({ "type": "done", "spec": spec, "session": req.body.session_id }),
+                        action: Some(iii_sdk::TriggerAction::Void),
+                        timeout_ms: None,
+                    }).await;
+                }
+
+                Ok(serde_json::to_value(ApiResponse {
+                    status_code: 200,
+                    headers: json_headers(),
+                    body: json!(info),
+                })?)
+            }
+        },
     );
+
+    let s = shared.clone();
+    iii.register_function_with(
+        RegisterFunctionMessage::with_id("spec-forge::leave-session".to_string())
+            .with_description("Leave a collaborative session — removes browser worker from peer list".to_string()),
+        move |input| {
+            let s = s.clone();
+            async move {
+                let req: ApiRequest<LeaveSessionRequest> = serde_json::from_value(input)
+                    .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
+                req.body.validate().map_err(|e| IIIError::Handler(e))?;
+                let wid = req.body.worker_id.clone();
+                session::leave_session(&s.iii, &req.body.session_id, &wid)
+                    .await
+                    .map_err(|e| IIIError::Handler(e.to_string()))?;
+                Ok(serde_json::to_value(ApiResponse {
+                    status_code: 200,
+                    headers: json_headers(),
+                    body: json!({ "left": true }),
+                })?)
+            }
+        },
+    );
+
+    let s = shared.clone();
+    iii.register_function_with(
+        RegisterFunctionMessage::with_id("spec-forge::push-patch".to_string())
+            .with_description("Push a patch to all browsers in a session via fan-out".to_string()),
+        move |input| {
+            let s = s.clone();
+            async move {
+                let req: ApiRequest<PushPatchRequest> = serde_json::from_value(input)
+                    .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
+                req.body.validate().map_err(|e| IIIError::Handler(e))?;
+                session::fan_out_patch(&s.iii, &req.body.session_id, &req.body.patch, req.body.origin_peer.as_deref())
+                    .await
+                    .map_err(|e| IIIError::Handler(e.to_string()))?;
+                Ok(serde_json::to_value(ApiResponse {
+                    status_code: 200,
+                    headers: json_headers(),
+                    body: json!({ "pushed": true }),
+                })?)
+            }
+        },
+    );
+
+    iii.register_service(RegisterServiceMessage {
+        id: "spec-forge".to_string(),
+        name: "spec-forge".to_string(),
+        description: Some("Rust generation server for json-render — caching, streaming, rate limiting, collaboration, 3D scene support".to_string()),
+        parent_service_id: None,
+    });
 }
 
 fn register_http_triggers(iii: &III) {
@@ -377,19 +448,37 @@ fn register_http_triggers(iii: &III) {
             "GET",
             "Get a specific catalog preset by name",
         ),
+        (
+            "spec-forge::join-session",
+            "spec-forge/join",
+            "POST",
+            "Join a collaborative session",
+        ),
+        (
+            "spec-forge::leave-session",
+            "spec-forge/leave",
+            "POST",
+            "Leave a collaborative session",
+        ),
+        (
+            "spec-forge::push-patch",
+            "spec-forge/push",
+            "POST",
+            "Push a patch to all browsers in a session",
+        ),
     ];
 
     for (function_id, api_path, method, description) in triggers {
-        if let Err(e) = iii.register_trigger(
-            "http",
-            function_id,
-            json!({
+        if let Err(e) = iii.register_trigger(RegisterTriggerInput {
+            trigger_type: "http".to_string(),
+            function_id: function_id.to_string(),
+            config: json!({
                 "api_path": api_path,
                 "http_method": method,
                 "description": description,
                 "metadata": { "tags": ["spec-forge"] }
             }),
-        ) {
+        }) {
             tracing::warn!("HTTP trigger {} failed: {}", api_path, e);
         }
     }
@@ -542,12 +631,45 @@ fn parse_jsonl_to_patches(raw: &str) -> Vec<Value> {
     raw.lines()
         .filter_map(|line| {
             let line = line.trim();
-            if line.is_empty() || !line.starts_with('{') {
+            if line.is_empty()
+                || line.starts_with("```")
+                || line.starts_with("//")
+                || line.starts_with('#')
+            {
+                return None;
+            }
+            let line = line.trim_start_matches(|c: char| !c.is_ascii_punctuation() || c == '-');
+            let line = line.trim();
+            if !line.starts_with('{') {
                 return None;
             }
             serde_json::from_str(line).ok()
         })
         .collect()
+}
+
+fn try_extract_spec_from_raw(raw: &str) -> Option<UISpec> {
+    let text = raw
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+    if let Ok(spec) = serde_json::from_str::<UISpec>(text) {
+        if !spec.root.is_empty() && !spec.elements.is_empty() {
+            return Some(spec);
+        }
+    }
+    if let Ok(val) = serde_json::from_str::<Value>(text) {
+        if let Some(spec_val) = val.get("spec").or(Some(&val)) {
+            if let Ok(spec) = serde_json::from_value::<UISpec>(spec_val.clone()) {
+                if !spec.root.is_empty() && !spec.elements.is_empty() {
+                    return Some(spec);
+                }
+            }
+        }
+    }
+    None
 }
 
 fn parse_jsonl_patches(raw: &str) -> Result<(Vec<Value>, UISpec), String> {
@@ -589,7 +711,10 @@ async fn refine_core(s: &SharedState, req: RefineInput) -> Result<Value, (u16, V
         .await
         .map_err(|e| (502, json!({"error": format!("Claude API error: {}", e)})))?;
 
+    let preview: String = raw.chars().take(500).collect();
+    tracing::debug!("Refine raw response ({} chars): {}", raw.len(), preview);
     let patches = parse_jsonl_to_patches(&raw);
+    tracing::info!("Parsed {} patches from refine response", patches.len());
     let mut new_spec = req.current_spec.clone();
 
     for patch in &patches {
@@ -597,22 +722,41 @@ async fn refine_core(s: &SharedState, req: RefineInput) -> Result<Value, (u16, V
     }
 
     if patches.is_empty() {
-        return Err((
-            422,
-            json!({"error": "No patches found in refine response", "raw": raw}),
-        ));
+        tracing::info!("No patches from refine — attempting full spec extraction");
+        let fallback = try_extract_spec_from_raw(&raw);
+        let elapsed = start.elapsed().as_millis() as u64;
+        match fallback {
+            Some(extracted) => {
+                let errors = validate::validate_spec(&extracted, &catalog);
+                let warnings: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
+                let changed = extracted.root != req.current_spec.root
+                    || extracted.elements.len() != req.current_spec.elements.len();
+                return Ok(json!({
+                    "spec": extracted,
+                    "patches": [],
+                    "patch_count": if changed { 1 } else { 0 },
+                    "generation_ms": elapsed,
+                    "model": req.model,
+                    "valid": warnings.is_empty(),
+                    "warnings": if changed { warnings } else { vec!["No changes needed — spec already matches the request".to_string()] },
+                }));
+            }
+            None => {
+                return Ok(json!({
+                    "spec": req.current_spec,
+                    "patches": [],
+                    "patch_count": 0,
+                    "generation_ms": elapsed,
+                    "model": req.model,
+                    "valid": false,
+                    "warnings": ["Failed to extract spec or patches from LLM response"],
+                }));
+            }
+        }
     }
 
     let errors = validate::validate_spec(&new_spec, &catalog);
-    if !errors.is_empty() {
-        return Err((
-            422,
-            json!({
-                "error": "Refined spec validation failed",
-                "details": errors.iter().map(|e| e.to_string()).collect::<Vec<_>>(),
-            }),
-        ));
-    }
+    let warnings: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
 
     let elapsed = start.elapsed().as_millis() as u64;
     s.streams
@@ -627,6 +771,8 @@ async fn refine_core(s: &SharedState, req: RefineInput) -> Result<Value, (u16, V
         "patch_count": patches.len(),
         "generation_ms": elapsed,
         "model": req.model,
+        "valid": warnings.is_empty(),
+        "warnings": warnings,
     }))
 }
 
@@ -647,12 +793,20 @@ async fn stream_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (u1
     let catalog = resolve_catalog(&req.catalog, &req.catalog_preset)?;
     let catalog_json = serde_json::to_string(&catalog).unwrap();
     let key = SpecCache::cache_key(&req.prompt, &catalog_json);
+    let session_id = req.session_id.clone();
 
     if let Some(spec) = s.cache.get(&key) {
         s.streams
             .increment("spec-forge::metrics::cache", "hits", 1)
             .await
             .ok();
+
+        if let Some(ref sid) = session_id {
+            let done_msg = json!({"type": "done", "spec": spec, "valid": true, "generation_ms": 0});
+            session::fan_out_patch(&s.iii, sid, &done_msg, req.origin_peer.as_deref()).await.ok();
+            session::store_spec(&s.iii, sid, &json!(spec), "cached").await.ok();
+        }
+
         return Ok(json!({
             "cached": true,
             "spec": spec,
@@ -685,10 +839,14 @@ async fn stream_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (u1
     let streams = s.streams.clone();
     let prompt_str = req.prompt.clone();
     let catalog_hash = SpecCache::cache_key("", &catalog_json);
+    let iii_clone = s.iii.clone();
+    let origin_peer = req.origin_peer.clone();
 
     tokio::spawn(async move {
         let start = std::time::Instant::now();
-        match call_claude_streaming(&http, &api_key, &model, &prompt_text, &writer, max_tokens).await {
+        let sid_clone = session_id.clone();
+        let iii_for_patches = iii_clone.clone();
+        match call_claude_streaming(&http, &api_key, &model, &prompt_text, &writer, max_tokens, sid_clone.as_deref(), &iii_for_patches, origin_peer.as_deref()).await {
             Ok(spec) => {
                 let errors = validate::validate_spec(&spec, &catalog);
                 let elapsed = start.elapsed().as_millis() as u64;
@@ -704,12 +862,23 @@ async fn stream_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (u1
                     "generation_ms": elapsed,
                 });
                 writer.send_message(&done_msg.to_string()).await.ok();
+
+                if let Some(ref sid) = session_id {
+                    session::fan_out_patch(&iii_clone, sid, &done_msg, origin_peer.as_deref()).await.ok();
+                    if errors.is_empty() {
+                        session::store_spec(&iii_clone, sid, &json!(spec), "browser").await.ok();
+                    }
+                }
+
                 streams.increment("spec-forge::metrics::generate", "count", 1).await.ok();
                 streams.increment("spec-forge::metrics::generate", "total_ms", elapsed as i64).await.ok();
             }
             Err(e) => {
                 let err_msg = json!({"type": "error", "error": e});
                 writer.send_message(&err_msg.to_string()).await.ok();
+                if let Some(ref sid) = session_id {
+                    session::fan_out_patch(&iii_clone, sid, &err_msg, origin_peer.as_deref()).await.ok();
+                }
             }
         }
         writer.close().await.ok();
@@ -731,6 +900,9 @@ async fn call_claude_streaming(
     prompt_text: &str,
     writer: &iii_sdk::channels::ChannelWriter,
     max_tokens: u32,
+    session_id: Option<&str>,
+    iii: &III,
+    origin_peer: Option<&str>,
 ) -> Result<UISpec, String> {
     let body = json!({
         "model": model,
@@ -793,6 +965,9 @@ async fn call_claude_streaming(
                                     apply_patch(&mut spec, &patch);
                                     let msg = json!({"type": "patch", "patch": patch});
                                     writer.send_message(&msg.to_string()).await.ok();
+                                    if let Some(sid) = session_id {
+                                        session::fan_out_patch(iii, sid, &msg, origin_peer).await.ok();
+                                    }
                                 }
                             }
                         }
@@ -814,6 +989,9 @@ async fn call_claude_streaming(
             apply_patch(&mut spec, &patch);
             let msg = json!({"type": "patch", "patch": patch});
             writer.send_message(&msg.to_string()).await.ok();
+            if let Some(sid) = session_id {
+                session::fan_out_patch(iii, sid, &msg, origin_peer).await.ok();
+            }
         }
     }
 
