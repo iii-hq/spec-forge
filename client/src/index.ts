@@ -29,6 +29,7 @@ export function createSpecForge(iii: any, opts: SpecForgeOptions): SpecForge {
   const catalog = opts.catalog
   const model = opts.model ?? "claude-sonnet-4-20250514"
   let sessionId: string | null = null
+  let sessionTriggerRef: { unregister: () => void } | null = null
 
   const stateStore = createIIIStateStore(iii, scope)
   const actionRouter = createIIIActionRouter(iii)
@@ -115,18 +116,17 @@ export function createSpecForge(iii: any, opts: SpecForgeOptions): SpecForge {
     },
 
     async join(sid: string) {
-      sessionId = sid
+      const triggerRef = iii.registerTrigger({
+        type: "state",
+        function_id: "ui::state-update",
+        config: { scope: `session::${sid}` },
+      })
       await iii.trigger({
         function_id: "spec-forge::join-session",
         payload: { session_id: sid },
       })
-      refs.push(
-        iii.registerTrigger({
-          type: "state",
-          function_id: "ui::state-update",
-          config: { scope: `session::${sid}` },
-        }),
-      )
+      sessionId = sid
+      sessionTriggerRef = triggerRef
     },
 
     async leave() {
@@ -135,6 +135,10 @@ export function createSpecForge(iii: any, opts: SpecForgeOptions): SpecForge {
         function_id: "spec-forge::leave-session",
         payload: { session_id: sessionId },
       })
+      if (sessionTriggerRef) {
+        sessionTriggerRef.unregister()
+        sessionTriggerRef = null
+      }
       sessionId = null
     },
 

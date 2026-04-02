@@ -12,6 +12,7 @@ import {
 
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 const ROUNDS = 3;
+const ANTHROPIC_TIMEOUT_MS = 60_000;
 
 // json-render catalog — simple object format (no schema needed for prompt building)
 const catalog = {
@@ -97,6 +98,7 @@ async function benchGenerate(prompt) {
 
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
+    signal: AbortSignal.timeout(ANTHROPIC_TIMEOUT_MS),
     headers: {
       "x-api-key": ANTHROPIC_KEY,
       "anthropic-version": "2023-06-01",
@@ -119,8 +121,10 @@ async function benchGenerate(prompt) {
 
   let spec = { root: "", elements: {} };
   for (const line of lines) {
-    const patch = parseSpecStreamLine(line);
-    if (patch) applySpecStreamPatch(spec, patch);
+    try {
+      const patch = parseSpecStreamLine(line);
+      if (patch) applySpecStreamPatch(spec, patch);
+    } catch { /* ignore malformed model line */ }
   }
 
   return { ms: elapsed, elements: Object.keys(spec.elements).length, patches: lines.length };
@@ -153,12 +157,13 @@ async function run() {
     coldElements = cold.elements;
     console.log(`  Generate (cold):                 ${fmt(cold.ms)}  (${cold.elements} elements)`);
 
-    // Second call — no cache (json-render has no caching)
-    const second = await benchGenerate(PROMPT + " (jr-bench-" + Date.now() + ")");
+    // Second call — no cache (json-render has no caching), same prompt
+    const repeatPrompt = PROMPT + " (jr-bench-repeat-" + Date.now() + ")";
+    const second = await benchGenerate(repeatPrompt);
     console.log(`  Generate (repeat, NO cache):     ${fmt(second.ms)}  (still calls LLM)`);
 
     // Third call — same prompt, still no cache
-    const third = await benchGenerate(PROMPT + " (jr-bench-" + Date.now() + ")");
+    const third = await benchGenerate(repeatPrompt);
     console.log(`  Generate (3rd call, NO cache):   ${fmt(third.ms)}  (always full LLM call)`);
 
     // Build a spec for validation benchmark
@@ -168,6 +173,7 @@ async function run() {
       // Reconstruct spec from a simple prompt
       const r2 = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
+        signal: AbortSignal.timeout(ANTHROPIC_TIMEOUT_MS),
         headers: {
           "x-api-key": ANTHROPIC_KEY,
           "anthropic-version": "2023-06-01",
@@ -183,8 +189,10 @@ async function run() {
       const text = b2.content?.[0]?.text || "";
       patchLines = text.split("\n").filter(l => l.trim().startsWith("{"));
       for (const line of patchLines) {
-        const patch = parseSpecStreamLine(line);
-        if (patch) applySpecStreamPatch(spec, patch);
+        try {
+          const patch = parseSpecStreamLine(line);
+          if (patch) applySpecStreamPatch(spec, patch);
+        } catch { /* ignore malformed model line */ }
       }
     }
   } else {
@@ -230,7 +238,7 @@ async function run() {
     prompt_build_ms: promptMs,
     cold_generate_ms: coldMs,
     cold_elements: coldElements,
-    validate_ms: 0,
+    validate_ms: null,
     parse_ms: parseMs,
     compile_ms: compileMs,
   };

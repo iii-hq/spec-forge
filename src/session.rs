@@ -10,7 +10,7 @@ pub async fn join_session(
 ) -> Result<SessionInfo, Box<dyn std::error::Error + Send + Sync>> {
     let scope = format!("session::{}", session_id);
 
-    let peers_val: serde_json::Value = iii
+    let peers_val: serde_json::Value = match iii
         .trigger(TriggerRequest {
             function_id: "state::get".to_string(),
             payload: json!({ "scope": scope, "key": "peers" }),
@@ -18,11 +18,18 @@ pub async fn join_session(
             timeout_ms: None,
         })
         .await
-        .unwrap_or(json!([]));
+    {
+        Ok(v) if !v.is_null() => v,
+        Ok(_) => json!([]),
+        Err(e) => {
+            tracing::warn!("Failed to read peers for session {}: {}", session_id, e);
+            json!([])
+        }
+    };
 
-    let mut peers: Vec<String> = serde_json::from_value(peers_val).unwrap_or_default();
+    let mut peers: Vec<String> = serde_json::from_value(peers_val)
+        .map_err(|e| format!("Corrupt peers state for session {}: {}", session_id, e))?;
 
-    // Cap stale peers — keep only last 10 and deduplicate
     if peers.len() > 10 {
         peers = peers.into_iter().rev().take(10).collect::<Vec<_>>();
         peers.reverse();
@@ -40,7 +47,7 @@ pub async fn join_session(
     })
     .await?;
 
-    let spec: serde_json::Value = iii
+    let spec: serde_json::Value = match iii
         .trigger(TriggerRequest {
             function_id: "state::get".to_string(),
             payload: json!({ "scope": scope, "key": "spec" }),
@@ -48,7 +55,13 @@ pub async fn join_session(
             timeout_ms: None,
         })
         .await
-        .unwrap_or(json!(null));
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("Failed to read spec for session {}: {}", session_id, e);
+            json!(null)
+        }
+    };
 
     Ok(SessionInfo {
         session_id: session_id.to_string(),
@@ -64,7 +77,7 @@ pub async fn leave_session(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let scope = format!("session::{}", session_id);
 
-    let peers_val: serde_json::Value = iii
+    let peers_val: serde_json::Value = match iii
         .trigger(TriggerRequest {
             function_id: "state::get".to_string(),
             payload: json!({ "scope": scope, "key": "peers" }),
@@ -72,9 +85,17 @@ pub async fn leave_session(
             timeout_ms: None,
         })
         .await
-        .unwrap_or(json!([]));
+    {
+        Ok(v) if !v.is_null() => v,
+        Ok(_) => json!([]),
+        Err(e) => {
+            tracing::warn!("Failed to read peers for leave_session {}: {}", session_id, e);
+            return Ok(());
+        }
+    };
 
-    let mut peers: Vec<String> = serde_json::from_value(peers_val).unwrap_or_default();
+    let mut peers: Vec<String> = serde_json::from_value(peers_val)
+        .map_err(|e| format!("Corrupt peers state for session {}: {}", session_id, e))?;
     peers.retain(|p| p != worker_id);
 
     iii.trigger(TriggerRequest {
@@ -92,10 +113,11 @@ pub async fn fan_out_patch(
     iii: &III,
     session_id: &str,
     patch: &serde_json::Value,
+    origin_peer: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let scope = format!("session::{}", session_id);
 
-    let peers_val: serde_json::Value = iii
+    let peers_val: serde_json::Value = match iii
         .trigger(TriggerRequest {
             function_id: "state::get".to_string(),
             payload: json!({ "scope": scope, "key": "peers" }),
@@ -103,12 +125,23 @@ pub async fn fan_out_patch(
             timeout_ms: None,
         })
         .await
-        .unwrap_or(json!([]));
+    {
+        Ok(v) if !v.is_null() => v,
+        Ok(_) => json!([]),
+        Err(e) => {
+            tracing::warn!("Failed to read peers for fan_out {}: {}", session_id, e);
+            return Ok(());
+        }
+    };
 
-    let peers: Vec<String> = serde_json::from_value(peers_val).unwrap_or_default();
-    tracing::info!("Fan-out to {} peers: {:?}", peers.len(), peers);
+    let peers: Vec<String> = serde_json::from_value(peers_val)
+        .map_err(|e| format!("Corrupt peers state for session {}: {}", session_id, e))?;
+    tracing::info!("Fan-out to {} peers (origin={:?}): {:?}", peers.len(), origin_peer, peers);
 
     for peer in &peers {
+        if origin_peer == Some(peer.as_str()) {
+            continue;
+        }
         let fn_id = format!("ui::render-patch::{}", peer);
         match iii
             .trigger(TriggerRequest {
@@ -143,7 +176,7 @@ pub async fn store_spec(
     })
     .await?;
 
-    let history_val: serde_json::Value = iii
+    let history_val: serde_json::Value = match iii
         .trigger(TriggerRequest {
             function_id: "state::get".to_string(),
             payload: json!({ "scope": scope, "key": "history" }),
@@ -151,9 +184,17 @@ pub async fn store_spec(
             timeout_ms: None,
         })
         .await
-        .unwrap_or(json!([]));
+    {
+        Ok(v) if !v.is_null() => v,
+        Ok(_) => json!([]),
+        Err(e) => {
+            tracing::warn!("Failed to read history for session {}: {}", session_id, e);
+            json!([])
+        }
+    };
 
-    let mut history: Vec<HistoryEntry> = serde_json::from_value(history_val).unwrap_or_default();
+    let mut history: Vec<HistoryEntry> = serde_json::from_value(history_val)
+        .map_err(|e| format!("Corrupt history state for session {}: {}", session_id, e))?;
 
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)

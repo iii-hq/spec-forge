@@ -73,7 +73,6 @@ pub struct UIElement {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct JoinSessionRequest {
-    #[serde(default)]
     pub session_id: String,
     #[serde(default)]
     pub worker_id: Option<String>,
@@ -81,20 +80,47 @@ pub struct JoinSessionRequest {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LeaveSessionRequest {
-    #[serde(default)]
     pub session_id: String,
-    #[serde(default)]
     pub worker_id: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PushPatchRequest {
-    #[serde(default)]
     pub session_id: String,
     #[serde(default)]
     pub target: Option<String>,
     #[serde(default)]
     pub patch: serde_json::Value,
+}
+
+impl JoinSessionRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.session_id.is_empty() {
+            return Err("session_id is required".to_string());
+        }
+        Ok(())
+    }
+}
+
+impl LeaveSessionRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.session_id.is_empty() {
+            return Err("session_id is required".to_string());
+        }
+        if self.worker_id.is_empty() {
+            return Err("worker_id is required".to_string());
+        }
+        Ok(())
+    }
+}
+
+impl PushPatchRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.session_id.is_empty() {
+            return Err("session_id is required".to_string());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

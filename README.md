@@ -17,7 +17,7 @@ sequenceDiagram
     participant W as spec-forge Worker
     participant C as Claude API
 
-    B->>E: iii.trigger('spec-forge::stream', { prompt, catalog })
+    B->>E: iii.trigger('api::post::spec-forge::stream', { prompt, catalog })
     E->>W: routes to registered function
     W->>C: streaming request
     C-->>W: JSONL patches (one per component)
@@ -28,23 +28,18 @@ sequenceDiagram
 ### From the Browser
 
 ```typescript
-import { registerWorker } from 'iii-browser-sdk'
+import { createSpecForge } from '@iii-hq/spec-forge'
 
-const iii = registerWorker('ws://localhost:49135')
-
-// Register a function to receive streaming patches
-iii.registerFunction({ id: 'ui::render-patch::my-tab' }, async (data) => {
-  renderComponent(data)
-  return { applied: true }
+// iii = pre-initialized iii-browser-sdk connection to ws://localhost:49135
+const specForge = createSpecForge(iii, {
+  catalog,
+  onPatch: (data) => renderComponent(data),
 })
 
 // Generate UI from a prompt
-const result = await iii.trigger({
-  function_id: 'api::post::spec-forge::generate',
-  payload: { body: { prompt: 'A sales dashboard with revenue metrics', catalog } }
-})
+const result = await specForge.generate('A sales dashboard with revenue metrics')
 
-// result.body.spec → { root: "main", elements: { ... } }
+// result.spec → { root: "main", elements: { ... } }
 ```
 
 ### Collaborative Sessions
@@ -153,38 +148,42 @@ spec-forge generates [json-render](https://github.com/vercel-labs/json-render) s
 ## Architecture
 
 ```mermaid
-graph LR
-    subgraph iii engine
-        API[RestApiModule :3111]
-        W1[WorkerModule :49134<br/>backend workers]
-        W2[WorkerModule :49135<br/>browser workers RBAC]
-        ST[StateModule<br/>session state]
-        SM[StreamModule :3113]
+graph TD
+    subgraph Browsers
+        B1[Tab 1<br/>iii-browser-sdk]
+        B2[Tab 2<br/>iii-browser-sdk]
     end
 
-    subgraph spec-forge worker
-        GEN[generate]
-        STR[stream + fan-out]
+    subgraph Engine["iii engine"]
+        W2[":49135 browser RBAC"]
+        API[":3111 REST API"]
+        W1[":49134 backend"]
+        ST[State]
+        SM[":3113 Streams"]
+    end
+
+    subgraph Worker["spec-forge (Rust)"]
+        GEN[generate / stream]
         REF[refine]
-        SES[session join/leave]
+        SES[session join / leave]
+        CACHE[cache + semantic]
     end
 
-    subgraph browsers
-        B1[Tab 1]
-        B2[Tab 2]
-    end
+    CLAUDE[Claude API]
 
-    B1 -->|iii-browser-sdk| W2
-    B2 -->|iii-browser-sdk| W2
-    GEN -->|iii.trigger| W1
-    STR -->|fan-out patches| W2
-    W1 --- ST
-    API -->|HTTP triggers| GEN
+    B1 & B2 <-->|WebSocket| W2
+    API -->|HTTP| GEN
+    GEN -->|register + trigger| W1
+    GEN -->|call| CLAUDE
+    GEN -->|fan-out patches| W2
+    SES --> ST
+    GEN --> SM
+    GEN --> CACHE
 ```
 
 ### Source
 
-```
+```text
 src/
 ├── main.rs      ← worker entry, function registration, core logic
 ├── session.rs   ← collaborative sessions (join, leave, fan-out, store)
@@ -261,4 +260,4 @@ cargo test  # 39 tests
 
 ## License
 
-MIT
+Apache-2.0

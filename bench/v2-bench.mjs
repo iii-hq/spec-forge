@@ -48,6 +48,7 @@ function printRow(name, sfTime, jrTime, note) {
 async function healthCheck() {
   try {
     const r = await fetch(`${BASE}/spec-forge/health`);
+    if (!r.ok) return false;
     return (await r.json()).status === "ok";
   } catch { return false; }
 }
@@ -93,11 +94,13 @@ async function timeStream(prompt, catalog, sessionId) {
     const wsStart = performance.now();
 
     ws.on("message", (data) => {
-      const msg = JSON.parse(data.toString());
-      if (msg.type === "patch") {
-        patches++;
-        if (patches === 1) firstPatchMs = performance.now() - wsStart;
-      }
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === "patch") {
+          patches++;
+          if (patches === 1) firstPatchMs = performance.now() - wsStart;
+        }
+      } catch { /* ignore malformed messages */ }
     });
 
     ws.on("close", () => {

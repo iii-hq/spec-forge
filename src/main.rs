@@ -127,7 +127,7 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
             async move {
                 let req: ApiRequest<GenerateRequest> = serde_json::from_value(input)
                     .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
-                tracing::info!(action = "generate", prompt = %req.body.prompt);
+                tracing::info!(action = "generate", prompt_len = req.body.prompt.len());
                 match generate_core(&s, req.body).await {
                     Ok(body) => Ok(serde_json::to_value(ApiResponse {
                         status_code: 200,
@@ -153,7 +153,7 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
             async move {
                 let req: ApiRequest<RefineInput> = serde_json::from_value(input)
                     .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
-                tracing::info!(action = "refine", prompt = %req.body.prompt);
+                tracing::info!(action = "refine", prompt_len = req.body.prompt.len());
                 match refine_core(&s, req.body).await {
                     Ok(body) => Ok(serde_json::to_value(ApiResponse {
                         status_code: 200,
@@ -249,7 +249,7 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
             async move {
                 let req: ApiRequest<GenerateRequest> = serde_json::from_value(input)
                     .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
-                tracing::info!(action = "stream", prompt = %req.body.prompt);
+                tracing::info!(action = "stream", prompt_len = req.body.prompt.len());
                 match stream_core(&s, req.body).await {
                     Ok(body) => Ok(serde_json::to_value(ApiResponse {
                         status_code: 200,
@@ -314,6 +314,7 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
             async move {
                 let req: ApiRequest<JoinSessionRequest> = serde_json::from_value(input)
                     .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
+                req.body.validate().map_err(|e| IIIError::Handler(e))?;
                 let worker_id = req.body.worker_id.unwrap_or_else(|| "anonymous".to_string());
                 let info = session::join_session(&s.iii, &req.body.session_id, &worker_id)
                     .await
@@ -347,7 +348,8 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
             async move {
                 let req: ApiRequest<LeaveSessionRequest> = serde_json::from_value(input)
                     .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
-                let wid = if req.body.worker_id.is_empty() { "anonymous".to_string() } else { req.body.worker_id.clone() };
+                req.body.validate().map_err(|e| IIIError::Handler(e))?;
+                let wid = req.body.worker_id.clone();
                 session::leave_session(&s.iii, &req.body.session_id, &wid)
                     .await
                     .map_err(|e| IIIError::Handler(e.to_string()))?;
@@ -369,7 +371,8 @@ fn register_functions(iii: &III, shared: Arc<SharedState>) {
             async move {
                 let req: ApiRequest<PushPatchRequest> = serde_json::from_value(input)
                     .map_err(|e| IIIError::Handler(format!("Bad request: {}", e)))?;
-                session::fan_out_patch(&s.iii, &req.body.session_id, &req.body.patch)
+                req.body.validate().map_err(|e| IIIError::Handler(e))?;
+                session::fan_out_patch(&s.iii, &req.body.session_id, &req.body.patch, req.body.target.as_deref())
                     .await
                     .map_err(|e| IIIError::Handler(e.to_string()))?;
                 Ok(serde_json::to_value(ApiResponse {
@@ -708,7 +711,8 @@ async fn refine_core(s: &SharedState, req: RefineInput) -> Result<Value, (u16, V
         .await
         .map_err(|e| (502, json!({"error": format!("Claude API error: {}", e)})))?;
 
-    tracing::info!("Refine raw response ({} chars):\n{}", raw.len(), &raw[..raw.len().min(1000)]);
+    let preview: String = raw.chars().take(500).collect();
+    tracing::debug!("Refine raw response ({} chars): {}", raw.len(), preview);
     let patches = parse_jsonl_to_patches(&raw);
     tracing::info!("Parsed {} patches from refine response", patches.len());
     let mut new_spec = req.current_spec.clone();
@@ -718,19 +722,37 @@ async fn refine_core(s: &SharedState, req: RefineInput) -> Result<Value, (u16, V
     }
 
     if patches.is_empty() {
-        tracing::info!("No patches from refine — spec unchanged");
+        tracing::info!("No patches from refine — attempting full spec extraction");
         let fallback = try_extract_spec_from_raw(&raw);
-        let final_spec = fallback.unwrap_or(req.current_spec.clone());
         let elapsed = start.elapsed().as_millis() as u64;
-        return Ok(json!({
-            "spec": final_spec,
-            "patches": [],
-            "patch_count": 0,
-            "generation_ms": elapsed,
-            "model": req.model,
-            "valid": true,
-            "warnings": ["No changes needed — spec already matches the request"],
-        }));
+        match fallback {
+            Some(extracted) => {
+                let errors = validate::validate_spec(&extracted, &catalog);
+                let warnings: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
+                let changed = extracted.root != req.current_spec.root
+                    || extracted.elements.len() != req.current_spec.elements.len();
+                return Ok(json!({
+                    "spec": extracted,
+                    "patches": [],
+                    "patch_count": if changed { 1 } else { 0 },
+                    "generation_ms": elapsed,
+                    "model": req.model,
+                    "valid": warnings.is_empty(),
+                    "warnings": if changed { warnings } else { vec!["No changes needed — spec already matches the request".to_string()] },
+                }));
+            }
+            None => {
+                return Ok(json!({
+                    "spec": req.current_spec,
+                    "patches": [],
+                    "patch_count": 0,
+                    "generation_ms": elapsed,
+                    "model": req.model,
+                    "valid": true,
+                    "warnings": ["No changes needed — spec already matches the request"],
+                }));
+            }
+        }
     }
 
     let errors = validate::validate_spec(&new_spec, &catalog);
@@ -782,7 +804,7 @@ async fn stream_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (u1
         // If in session mode, push cached spec to all peers
         if let Some(ref sid) = session_id {
             let done_msg = json!({"type": "done", "spec": spec, "valid": true, "generation_ms": 0});
-            session::fan_out_patch(&s.iii, sid, &done_msg).await.ok();
+            session::fan_out_patch(&s.iii, sid, &done_msg, None).await.ok();
             session::store_spec(&s.iii, sid, &json!(spec), "cached").await.ok();
         }
 
@@ -843,7 +865,7 @@ async fn stream_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (u1
 
                 // Session mode: fan out patches to all peers
                 if let Some(ref sid) = session_id {
-                    session::fan_out_patch(&iii_clone, sid, &done_msg).await.ok();
+                    session::fan_out_patch(&iii_clone, sid, &done_msg, None).await.ok();
                     session::store_spec(&iii_clone, sid, &json!(spec), "browser").await.ok();
                 }
 
@@ -854,7 +876,7 @@ async fn stream_core(s: &SharedState, req: GenerateRequest) -> Result<Value, (u1
                 let err_msg = json!({"type": "error", "error": e});
                 writer.send_message(&err_msg.to_string()).await.ok();
                 if let Some(ref sid) = session_id {
-                    session::fan_out_patch(&iii_clone, sid, &err_msg).await.ok();
+                    session::fan_out_patch(&iii_clone, sid, &err_msg, None).await.ok();
                 }
             }
         }
@@ -942,7 +964,7 @@ async fn call_claude_streaming(
                                     let msg = json!({"type": "patch", "patch": patch});
                                     writer.send_message(&msg.to_string()).await.ok();
                                     if let Some(sid) = session_id {
-                                        session::fan_out_patch(iii, sid, &msg).await.ok();
+                                        session::fan_out_patch(iii, sid, &msg, None).await.ok();
                                     }
                                 }
                             }
@@ -966,7 +988,7 @@ async fn call_claude_streaming(
             let msg = json!({"type": "patch", "patch": patch});
             writer.send_message(&msg.to_string()).await.ok();
             if let Some(sid) = session_id {
-                session::fan_out_patch(iii, sid, &msg).await.ok();
+                session::fan_out_patch(iii, sid, &msg, None).await.ok();
             }
         }
     }

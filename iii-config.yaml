@@ -47,14 +47,15 @@ modules:
 
   - class: modules::worker::WorkerModule
     config:
-      host: 0.0.0.0
+      host: 127.0.0.1
       port: 49135
       rbac:
         expose_functions:
           - match("api::*")
-          - match("spec-forge::*")
-          - match("state::*")
-          - match("ui::*")
+          - match("spec-forge::join-session")
+          - match("spec-forge::leave-session")
+          - match("spec-forge::push-patch")
+          - match("ui::render-patch::*")
 
   - class: modules::stream::StreamModule
     config:

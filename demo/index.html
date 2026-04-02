@@ -2813,9 +2813,11 @@ window.addEventListener("beforeunload", () => {
   }
 });
 
-// Set session ID from URL hash — use shared default so all tabs match
-const urlSession = window.location.hash.replace('#', '');
-const sessionName = urlSession || "spec-forge-live";
+const navAnchors = new Set(["playground", "how", "comparison", "hero", ""]);
+const rawHash = window.location.hash.replace('#', '');
+const sessionName = (!rawHash || navAnchors.has(rawHash))
+  ? "sf-" + BROWSER_ID.split("-").slice(0, 2).join("-")
+  : rawHash;
 document.getElementById("sessionId").value = sessionName;
 
 // Auto-connect and auto-join session
